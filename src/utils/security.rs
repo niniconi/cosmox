@@ -54,7 +54,7 @@ pub fn check_if_paths_overlap(base_dir: PathBuf, paths: Vec<&str>) -> bool {
 /// # Arguments
 /// - `base_dir`: The root directory where the application is allowed to operate. It is recommended to pass a `&Path` reference.
 /// - `user_path_component`: The user-provided part of the path, such as a filename or a single subdirectory name.
-/// This string should have already been validated by `is_safe_filename_component`.
+///   This string should have already been validated by `is_safe_filename_component`.
 ///
 /// # Returns
 /// - `Ok(PathBuf)` If the path is safe and valid, returns the sanitized absolute path.

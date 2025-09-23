@@ -82,6 +82,20 @@ interface cosmox-types {
     permission-denied,
   }
 
+  variant media-type-error {
+    /// The requested type name is already registered by another plugin or the host.
+    /// The associated string provides the conflicting type name.
+    already-exists(string),
+
+    /// The provided type name or info is malformed.
+    /// The associated string explains the reason for the invalid format.
+    invalid-format(string),
+
+    /// The plugin lacks the necessary permissions to register the type.
+    /// This is a security-related error.
+    permission-denied,
+  }
+
   /// Represents a generic key-value pair, used for passing event metadata or query results.
   record key-value-pair {
     key: string,
@@ -231,6 +245,10 @@ interface cosmox-api {
   query-host-context: func(query-key: string, context-id: string) -> option<list<u8>>;
   // Or:
   // get-http-request-header: func(request-context-id: string, header-name: string) -> option<string>;
+
+  /// Get supported media types in cosmox
+  /// This API returns the media types supported by `cosmox` and those extended by `plugins`.
+  get-supported-media-types: func() -> list<string>;
 }
 
 /// The plugin's "world," defining all the interfaces imported and exported by the plugin

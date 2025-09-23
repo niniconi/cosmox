@@ -10,10 +10,14 @@ use crate::core::plugin::{
 
 pub fn plugin_wasm_lifecycle(store: &mut Store<ComponentRunStates>, instance: PluginHostWorld) {
   log::debug!("lifecycle............................");
+
   let supported_media_types = instance
     .cosmox_plugin_configuration_manager()
     .call_supported_media_types(&mut *store)
     .unwrap_or_default();
+  if let Err(err) = PluginManager::push_media_types(supported_media_types) {
+    log::error!("{err:?}");
+  }
 
   log::debug!("....................................");
   // log::debug!("try_lock {:?}", PLUGIN_MANAGER.try_lock());

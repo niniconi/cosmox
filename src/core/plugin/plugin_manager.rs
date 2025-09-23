@@ -1,12 +1,18 @@
 use std::{
   cell::RefCell,
-  collections::HashMap,
+  collections::{HashMap, HashSet},
   sync::{Arc, LazyLock, Mutex},
 };
 
+use ffmpeg_next::ffi::printf;
+use futures::stream::Collect;
 use lru::LruCache;
+use regex::Regex;
+use sea_orm::sea_query::IdenList;
 use wasmtime::component::ResourceTable;
 use wasmtime::{Engine, Store};
+
+use super::plugin_loader::bindings::cosmox::plugin::cosmox_types as bindings_cosmox_types;
 
 use crate::{
   configuration::Configuration,
@@ -17,6 +23,7 @@ use crate::{
       ComponentRunStates, CosmoxPluginData, bindings, load_builtin_plugins, load_external_plugins,
     },
   },
+  utils::default_constants::ascii_letters_number_separators,
 };
 
 // use tokio::sync::{Mutex, mpsc};
@@ -43,6 +50,8 @@ pub struct PluginManager {
   // pub id_map_to_name: HashMap<u64, String>,
   plugin_autoincrement: u64,
   wasm_autoincrement: u64,
+
+  pub supported_media_types: HashSet<String>,
 }
 
 // --- `thread_local!` Store management ---
@@ -341,6 +350,49 @@ impl PluginManager {
   pub fn _get_wasm_engine(&self) -> Arc<Engine> {
     // PLUGIN_MANAGER.lock().unwrap().engine.clone()
     self.engine.clone()
+  }
+
+  /// add media type to cosmox
+  /// # Arguments
+  /// - `media_types`: A vec of media types.
+  /// # Returns
+  /// - `Ok(())` Add media types successful.
+  /// - `Err(bindings_cosmox_types::MediaTypeError)` If it fails the check
+  pub fn push_media_types(
+    media_types: Vec<String>,
+  ) -> Result<(), bindings_cosmox_types::MediaTypeError> {
+    let mut plugin_manager = PLUGIN_MANAGER.lock().unwrap();
+    for media_type in media_types.iter() {
+      if media_type.len() > 32
+        || media_type
+          .chars()
+          .any(|x| !ascii_letters_number_separators().contains(x))
+      {
+        return Err(bindings_cosmox_types::MediaTypeError::InvalidFormat(
+          format!(
+            r#"
+            At `{media_type}`:
+            The `media_type` length must not exceed 32 characters.
+            It can only contain alphanumeric characters (A-Z, a-z, 0-9), as well as spaces, underscores, and hyphens.
+            "#
+          ),
+        ));
+      } else if plugin_manager.supported_media_types.contains(media_type) {
+        return Err(bindings_cosmox_types::MediaTypeError::AlreadyExists(
+          format!("Type `{media_type}` already exists."),
+        ));
+      }
+    }
+
+    for media_type in &media_types {
+      plugin_manager
+        .supported_media_types
+        .insert(media_type.clone());
+    }
+
+    log::info!("Add media types {media_types:?} successful.");
+
+    Ok(())
   }
 }
 
