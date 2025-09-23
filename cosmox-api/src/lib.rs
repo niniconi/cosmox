@@ -5,6 +5,7 @@ use bincode::{self, Decode, Encode};
 
 use crate::metadata::Metadata;
 
+pub mod api;
 pub mod metadata;
 
 /// Defines user interactions and system events that can occur in a multimedia management system.
@@ -57,10 +58,6 @@ impl Event {
   pub fn into_key(&self) -> EventKey {
     EventKey(std::mem::discriminant(self))
   }
-}
-
-pub mod api {
-  // TODO impl api of cosmox
 }
 
 #[cfg(test)]
