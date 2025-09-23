@@ -1,0 +1,14 @@
+[package]
+name = "cosmox-api"
+version.workspace = true
+edition.workspace = true
+keywords.workspace = true
+repository.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow = "1.0.99"
+bincode = "2.0.1"
+cosmox-macros = { workspace = true }
+serde = { version = "1.0.215", features = ["derive", "rc"] }

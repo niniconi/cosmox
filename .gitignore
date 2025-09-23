@@ -1,0 +1,11 @@
+# Target
+target/
+
+# test
+/test/
+/static/
+
+# Backup file
+*.swp
+*.bak
+*~

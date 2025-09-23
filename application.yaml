@@ -1,0 +1,28 @@
+server:
+  host: "127.0.0.1"
+  port: 8080
+database:
+  host: "192.168.1.254"
+  port: 3306
+  user: "root"
+  password: "123456"
+  database: "media"
+cosmox:
+  name: "cosmox server"
+  scanner:
+    metadata-path: "test/metadata"
+  library:
+    path: "test/data"
+  plugin:
+    path: "test/plugin"
+  cache:
+    path: "test/cache"
+  log:
+    path: "test/log"
+  proxy:
+    http: "http://proxy.server:8889"
+    https: "http://proxy.server:8889"
+  bt:
+    server: "http://127.0.0.1:7070"
+    username: "admin"
+    password: "123456"

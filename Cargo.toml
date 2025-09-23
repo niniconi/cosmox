@@ -1,0 +1,97 @@
+[package]
+name = "cosmox"
+description = "cosmox is a powerful, all-in-one platform for multimedia management and expansion. "
+version.workspace = true
+edition.workspace = true
+keywords.workspace = true
+repository.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+actix-web="4"
+actix-cors = "0.7.1"
+log = "0.4.22"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
+sqlx = { version = "0.8.2", features = ["mysql", "macros", "runtime-tokio-rustls", "chrono", "uuid", "json"] }
+serde = "1.0.215"
+serde_json = "1"
+serde_yaml = "0.9.34"
+futures = "0.3"
+jsonwebtoken = "9.3.1"
+reqwest = "0.12.20"
+scraper = "0.23.1"
+uuid = "1.17.0"
+validator = { version = "0.20.0", features = ["derive"] }
+utoipa = { version = "5.4.0", features = ["chrono"] }
+utoipa-swagger-ui = { version = "9.0.2", features = ["actix-web", "reqwest"] }
+tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread", "net", "sync", "time"] }
+chrono = { version = "0.4.41", features = ["serde"] }
+clap = "4.5.40"
+notify = "8.0.0"
+tokio-cron-scheduler = "0.14.0"
+config = "0.15.11"
+moka = { version = "0.12.10", features = ["future"] }
+thiserror = "2.0.12"
+anyhow = "1.0.98"
+casbin = "2.10.1"
+argon2 = "0.5.3"
+otp = "0.2.0"
+ffmpeg-next = "7.1.0"
+rand_core = { version = "0.9.3", features = ["std"] }
+actix-files = "0.6.6"
+sea-orm = { version = "1.1.12", features = ["sqlx-mysql", "runtime-tokio-rustls", "macros"] }
+regex = "1.11.1"
+actix-multipart = "0.7.2"
+futures-util = "0.3.31"
+sysinfo = "0.35.2"
+wasmtime = "34.0.1"
+wasmtime-wasi = "34.0.1"
+tracing-appender = "0.2.3"
+cosmox-api = { path = "./cosmox-api" }
+cosmox-macros = { path = "./cosmox-macros" }
+lru = "0.16.0"
+bincode = "2.0.1"
+url = "2.5.7"
+actix-ws = "0.3.0"
+
+[dev-dependencies]
+sqlx-cli = { version = "0.8.6", features = ["mysql"] }
+criterion = "0.6.0"
+
+[build-dependencies]
+weaver-orm-generator = { workspace = true }
+serde = "1.0.215"
+serde_yaml = "0.9.34"
+wit-bindgen = { version = "0.43.0", features = ["async"] }
+
+[profile.bench]
+debug = false
+
+[profile.release]
+strip = true
+lto = true
+
+[workspace]
+resolver = "2"
+members = [
+  "cosmox-api",
+  "cosmox-macros",
+  "cosmox-plugin-pack",
+  "lib/weaver-orm-generator"
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+keywords = ["media", "web"]
+repository = "https://github.com/niniconi/cosmox.git"
+license = "GPL-3.0-or-later"
+authors = [
+  "niniconi"
+]
+
+[workspace.dependencies]
+cosmox-macros = { path = "cosmox-macros" }
+weaver-orm-generator = { path = "lib/weaver-orm-generator" }

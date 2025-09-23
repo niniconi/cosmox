@@ -1,0 +1,1 @@
+# cosmox-plugin-pack

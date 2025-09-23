@@ -1,0 +1,5 @@
+#edition = "2021"
+#use_small_heuristics = true
+#fn_args_layout = "Compressed"
+#struct_field_align_threshold = 100
+tab_spaces = 2
