@@ -4,7 +4,10 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::{entities::users, user};
+use crate::{
+  entities::users,
+  user::{self, security::auth},
+};
 
 #[derive(Debug, Serialize)]
 struct Status {
@@ -26,8 +29,7 @@ pub async fn initialize(
   let is_initialized = false;
 
   if is_initialized && initialize_config.admin_password == initialize_config.admin_confirm_passwod {
-    let hash_password =
-      user::security::user::hash_password(&initialize_config.admin_password).unwrap();
+    let hash_password = auth::hash_password(&initialize_config.admin_password).unwrap();
     let user = users::ActiveModel {
       username: Set("admin".to_string()),
       password: Set(hash_password),

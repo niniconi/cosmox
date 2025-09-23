@@ -12,7 +12,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
-use super::security::user;
+use super::security::auth;
 use crate::utils::default_constants::default_page_size;
 use crate::{entities::users, utils::message::Message};
 use validator::{Validate, ValidationErrorsKind};
@@ -149,7 +149,7 @@ pub async fn sign_up(
         return Err(UserError::ConfirmationPasswordMismatch);
       }
       log::debug!("sign up user {body:#?}");
-      let hash_password = user::hash_password(&body.password).unwrap();
+      let hash_password = auth::hash_password(&body.password).unwrap();
       log::debug!("generate password hash {hash_password}");
       let current_navie_datetime = Utc::now().naive_utc();
       let user = users::ActiveModel {
@@ -276,11 +276,11 @@ pub async fn login(
   };
   if !user.is_empty() {
     let user = user.first().unwrap();
-    if user::verify_password(&body.password, &user.password).unwrap() {
+    if auth::verify_password(&body.password, &user.password).unwrap() {
       // generate token
       Ok(
         HttpResponse::Ok()
-          .body(user::generate_jwt(&user.uid.to_string(), user.username.as_bytes()).unwrap()),
+          .body(auth::generate_jwt(&user.uid.to_string(), user.username.as_bytes()).unwrap()),
       )
     } else {
       Err(UserError::LoginFailed(body.ident.to_string()))
