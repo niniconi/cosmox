@@ -137,8 +137,7 @@ impl bindings_cosmox_api::Host for CosmoxPluginData {
   }
 
   fn get_supported_media_types(&mut self) -> Vec<String> {
-    PluginManager::get_plugin_manager()
-      .supported_media_types
+    PluginManager::get_supported_media_types()
       .iter()
       .map(|x| x.clone())
       .collect::<Vec<_>>()

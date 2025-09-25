@@ -122,7 +122,7 @@ async fn main() -> std::io::Result<()> {
   let server_port = config.server.port;
   let config_app_data = web::Data::new(config);
 
-  PluginManager::init();
+  PluginManager::start();
 
   log::info!("start");
 

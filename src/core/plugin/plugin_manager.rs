@@ -66,7 +66,7 @@ thread_local! {
   });
 }
 
-pub static PLUGIN_MANAGER: LazyLock<Mutex<PluginManager>> =
+static PLUGIN_MANAGER: LazyLock<Mutex<PluginManager>> =
   LazyLock::new(|| Mutex::new(PluginManager::default()));
 
 /// Plugin manager
@@ -108,7 +108,7 @@ impl PluginManager {
     self.wasm_autoincrement
   }
 
-  pub fn init() {
+  pub fn start() {
     {
       let plugin_path = &Configuration::get_global_configuration().cosmox.plugin.path;
 
@@ -117,7 +117,7 @@ impl PluginManager {
 
       let mut plugin_manager = PLUGIN_MANAGER.lock().unwrap();
 
-      plugin_manager._init(builtin_plugins, external_plugins);
+      plugin_manager._start(builtin_plugins, external_plugins);
 
       log::info!("initialized plugin manager");
     } // Leaving the life cycle of `plugin_manager`
@@ -126,7 +126,7 @@ impl PluginManager {
     PluginManager::lifecycle_manager();
   }
 
-  fn _init(&mut self, builtin_plugins: Vec<Plugin>, external_plugins: Vec<Plugin>) {
+  fn _start(&mut self, builtin_plugins: Vec<Plugin>, external_plugins: Vec<Plugin>) {
     self.plugin_count += builtin_plugins.len() + external_plugins.len();
     for plugin in builtin_plugins {
       self.plugins.insert(plugin.id(), plugin);
@@ -138,10 +138,14 @@ impl PluginManager {
   }
 
   fn lifecycle_manager() {
-    let engine = PluginManager::get_wasm_engine();
-    let wasm_list = &PluginManager::get_plugin_manager().wasm_list;
+    let (engine, wasm_list) = {
+      let plugin_manager = PLUGIN_MANAGER.lock().unwrap();
+      let wasm_list = plugin_manager.wasm_list.clone();
+      let engine = plugin_manager.engine.clone();
+      (engine, wasm_list)
+    };
 
-    for (wasm_id, wasm_component) in wasm_list {
+    for (wasm_id, wasm_component) in wasm_list.iter() {
       log::debug!(
         "start lifetime manager for wasm ID:{wasm_id}, wasm_component:{wasm_component:#?}"
       );
@@ -196,6 +200,9 @@ impl PluginManager {
 
   pub fn query_ui_extensions() {}
 
+  /// dispatched
+  pub fn event_dispatcher() {}
+
   /// Notify event
   pub async fn notify_all(event: Arc<cosmox_api::Event>) {
     log::debug!("notify all message by event{event:?}");
@@ -203,7 +210,7 @@ impl PluginManager {
 
     let (components_for_current_event, engine) = {
       let plugin_manager = PLUGIN_MANAGER.lock().unwrap();
-      let engine = plugin_manager._get_wasm_engine();
+      let engine = plugin_manager.engine.clone();
       let components_for_current_event = match plugin_manager
         .event_map_to_wasm_components
         .get(&event.into_key())
@@ -335,23 +342,6 @@ impl PluginManager {
     Ok(())
   }
 
-  /// Get wasm runtime engine
-  /// ```
-  /// get wasm engine
-  /// ```rust
-  /// let engine = PluginManager::get_wasm_engine();
-  /// ```
-  #[inline]
-  pub fn get_wasm_engine() -> Arc<Engine> {
-    PLUGIN_MANAGER.lock().unwrap().engine.clone()
-  }
-
-  #[inline]
-  pub fn _get_wasm_engine(&self) -> Arc<Engine> {
-    // PLUGIN_MANAGER.lock().unwrap().engine.clone()
-    self.engine.clone()
-  }
-
   /// add media type to cosmox
   /// # Arguments
   /// - `media_types`: A vec of media types.
@@ -393,6 +383,26 @@ impl PluginManager {
     log::info!("Add media types {media_types:?} successful.");
 
     Ok(())
+  }
+
+  /// Get wasm runtime engine
+  /// ```
+  /// get wasm engine
+  /// ```rust
+  /// let engine = PluginManager::get_wasm_engine();
+  /// ```
+  #[inline]
+  pub fn get_wasm_engine() -> Arc<Engine> {
+    PLUGIN_MANAGER.lock().unwrap().engine.clone()
+  }
+
+  /// get wasm list
+  pub fn get_wasm_list() -> Arc<HashMap<u64, Arc<WasmComponent>>> {
+    Arc::new(PLUGIN_MANAGER.lock().unwrap().wasm_list.clone())
+  }
+
+  pub fn get_supported_media_types() -> Arc<HashSet<String>> {
+    Arc::new(PLUGIN_MANAGER.lock().unwrap().supported_media_types.clone())
   }
 }
 
