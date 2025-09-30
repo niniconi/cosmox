@@ -1,15 +1,16 @@
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 
-use anyhow::Result;
 use chrono::Utc;
 use futures::future::try_join_all;
 use sea_orm::{
-  ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait, TransactionTrait,
+  ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder,
+  TransactionTrait,
 };
 
 use crate::{
-  controller::library_controller::LibraryAddRequest,
+  controller::library_controller::{LibraryAddRequest, LibraryError, LibraryQueryRequest},
   entities::{library_paths, librarys, librarys_related_tags},
+  utils::message::Pagination,
 };
 
 /// create library with tags and paths
@@ -19,17 +20,20 @@ use crate::{
 pub async fn create_library_with_tags_and_paths(
   payload: Arc<LibraryAddRequest>,
   db: Arc<DatabaseConnection>,
-) -> Result<(
-  librarys::Model,
-  Vec<librarys_related_tags::Model>,
-  Vec<library_paths::Model>,
-)> {
+) -> Result<
+  (
+    librarys::Model,
+    Vec<librarys_related_tags::Model>,
+    Vec<library_paths::Model>,
+  ),
+  LibraryError,
+> {
   // check
 
   // insert into database
   let result = db
     .clone()
-    .transaction::<_, (librarys::Model, Vec<_>, Vec<_>), anyhow::Error>(|_txn| {
+    .transaction::<_, (librarys::Model, Vec<_>, Vec<_>), LibraryError>(|_txn| {
       Box::pin(async move {
         let current_datetime = Utc::now().naive_utc();
         let library = librarys::ActiveModel {
@@ -39,7 +43,12 @@ pub async fn create_library_with_tags_and_paths(
           last_update_datetime: Set(current_datetime),
           ..Default::default()
         };
-        let library = library.insert(db.as_ref()).await?;
+        let library = library
+          .insert(db.as_ref())
+          .await
+          .inspect_err(|err| log::error!("{err}"))
+          .map_err(|_err| LibraryError::InternalError("Database error".to_string()))?;
+
         let add_tag_futures: Vec<_> = payload
           .tags
           .iter()
@@ -52,13 +61,12 @@ pub async fn create_library_with_tags_and_paths(
             library_tag_relation
               .insert(db.as_ref())
               .await
-              .map_err(|_err| anyhow::anyhow!("error"))
+              .inspect_err(|err| log::error!("{err}"))
+              .map_err(|_err| LibraryError::InternalError("Database error".to_string()))
           })
           .collect();
 
-        let add_tag_results = try_join_all(add_tag_futures).await.inspect_err(|err| {
-          log::error!("{err}");
-        })?;
+        let add_tag_results = try_join_all(add_tag_futures).await?;
 
         let add_path_futures: Vec<_> = payload
           .library_paths
@@ -72,43 +80,36 @@ pub async fn create_library_with_tags_and_paths(
             library_path
               .insert(db.as_ref())
               .await
-              .map_err(|_err| anyhow::anyhow!("error"))
+              .inspect_err(|err| log::error!("{err}"))
+              .map_err(|_err| LibraryError::InternalError("Database error".to_string()))
           })
           .collect();
 
-        let add_path_results = try_join_all(add_path_futures)
-          .await
-          .inspect_err(|err| log::error!("{err}"))?;
+        let add_path_results = try_join_all(add_path_futures).await?;
         Ok((library, add_tag_results, add_path_results))
       })
     })
     .await;
 
-  match result {
-    Ok(result) => Ok(result),
-    Err(_err) => Err(anyhow::anyhow!("")),
-  }
+  let result = result.map_err(|_err| todo!())?;
+  Ok(result)
 }
 
 /// delete library
-pub async fn delete_library(lid: u64, db: Arc<DatabaseConnection>) -> Result<()> {
-  let library = librarys::ActiveModel {
-    lid: Set(lid),
-    ..Default::default()
-  };
-
-  library
-    .delete(db.as_ref())
+pub async fn delete_library(lid: u64, db: Arc<DatabaseConnection>) -> Result<(), LibraryError> {
+  librarys::Entity::delete_by_id(lid)
+    .exec(db.as_ref())
     .await
-    .map_err(|_err| anyhow::anyhow!("error"))?;
+    .inspect_err(|err| log::error!("{err}"))
+    .map_err(|_err| LibraryError::InternalError("Database error".to_string()))?;
   Ok(())
 }
 
-pub async fn add_tag_for_library(
+pub async fn add_tags_for_library(
   lid: u64,
   tags: Vec<u64>,
   db: Arc<DatabaseConnection>,
-) -> Result<Vec<librarys_related_tags::Model>> {
+) -> Result<Vec<librarys_related_tags::Model>, LibraryError> {
   let add_tag_futures: Vec<_> = tags
     .iter()
     .map(|x| async {
@@ -120,17 +121,60 @@ pub async fn add_tag_for_library(
       library_tag_relation
         .insert(db.as_ref())
         .await
-        .map_err(|err| anyhow::anyhow!("error"))
+        .inspect_err(|err| log::error!("{err}"))
     })
     .collect();
-  let add_tags_result = try_join_all(add_tag_futures).await?;
+
+  let add_tags_result = try_join_all(add_tag_futures)
+    .await
+    .map_err(|_err| LibraryError::InternalError("Database error".to_string()))?;
   Ok(add_tags_result)
 }
 
-pub async fn get_library(lid: u64, db: Arc<DatabaseConnection>) -> Result<Option<librarys::Model>> {
-  match librarys::Entity::find_by_id(lid).one(db.as_ref()).await {
-    Ok(library) => Ok(library),
-    Err(_err) => Err(anyhow::anyhow!("error")),
+pub async fn get_library(
+  lid: u64,
+  db: Arc<DatabaseConnection>,
+) -> Result<librarys::Model, LibraryError> {
+  let library = librarys::Entity::find_by_id(lid)
+    .one(db.as_ref())
+    .await
+    .inspect_err(|err| log::error!("{err}"))
+    .map_err(|_err| LibraryError::InternalError("Database error".to_string()))?;
+
+  match library {
+    Some(library) => Ok(library),
+    None => Err(LibraryError::NotFound(lid)),
+  }
+}
+
+pub async fn query_libraies(
+  params: LibraryQueryRequest,
+  db: Arc<DatabaseConnection>,
+) -> Result<(Vec<librarys::Model>, Pagination), LibraryError> {
+  let mut select = librarys::Entity::find();
+  let mut page = 0;
+
+  if let Some(inner_page) = params.page {
+    page = inner_page;
+  }
+
+  if let Some(sort) = &params.sort
+    && let Ok(column) = librarys::Column::from_str(sort)
+  {
+    select = select.order_by(column, sea_orm::Order::Asc);
+  };
+
+  let paginator = select.paginate(db.as_ref(), params.page_size);
+  let pagination = Pagination::new(
+    paginator.num_items().await.unwrap(),
+    params.page_size,
+    paginator.cur_page(),
+    "",
+  );
+
+  match paginator.fetch_page(page).await {
+    Ok(result) => Ok((result, pagination)),
+    Err(err) => Err(LibraryError::InternalError("Database error".to_string())),
   }
 }
 

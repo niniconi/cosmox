@@ -1,10 +1,11 @@
 use std::fmt::Display;
+use std::str::FromStr;
 use std::{borrow::Cow, collections::HashMap};
 
 use actix_web::{HttpResponse, Responder, delete, get, post, web};
 
 use chrono::Utc;
-use cosmox_macros::{ActixWebError, auto_webapi_doc};
+use cosmox_macros::{ActixWebError, auto_webapi_doc, page_helper};
 use sea_orm::{
   ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
   QueryFilter, QueryOrder, SqlErr,
@@ -70,15 +71,11 @@ pub struct UserResp {
   pub email: Option<String>,
 }
 
+#[page_helper]
 #[derive(Debug, Deserialize, IntoParams)]
-pub struct UserQueryParams {
+pub struct UserQueryRequest {
   pub status: Option<String>,
   pub role: Option<String>,
-  #[serde(rename = "sort_by")]
-  pub sort: Option<String>,
-  pub page: Option<u64>,
-  #[serde(default = "default_page_size")]
-  pub page_size: u64,
   pub search: Option<String>,
 }
 
@@ -140,9 +137,6 @@ pub async fn sign_up(
   body: web::Json<UserSignUpRequest>,
   db: web::Data<DatabaseConnection>,
 ) -> Result<impl Responder, UserError> {
-  match Some(0) {
-    None | Some(_) => {}
-  };
   match body.validate() {
     Ok(_) => {
       if body.confirm_password != body.password {
@@ -205,23 +199,27 @@ pub async fn delete(uid: web::Query<u64>, db: web::Data<DatabaseConnection>) -> 
 #[auto_webapi_doc]
 #[get("query")]
 pub async fn query(
-  params: web::Query<UserQueryParams>,
+  params: web::Query<UserQueryRequest>,
   db: web::Data<DatabaseConnection>,
 ) -> impl Responder {
   let mut select = users::Entity::find();
+  let mut page = 0;
+
+  if let Some(inner_page) = params.page {
+    page = inner_page;
+  }
+
   if let Some(search) = &params.search {
     select = select.filter(users::Column::Username.contains(search));
   };
 
-  if let Some(sort) = &params.sort {
-    select = select.order_by(users::Column::Username, sea_orm::Order::Asc);
+  if let Some(sort) = &params.sort
+    && let Ok(column) = users::Column::from_str(sort)
+  {
+    select = select.order_by(column, sea_orm::Order::Asc);
   };
 
   let paginator = select.paginate(db.as_ref(), params.page_size);
-  let mut page = 0;
-  if let Some(inner_page) = params.page {
-    page = inner_page;
-  }
   let result = paginator.fetch_page(page).await.unwrap();
   HttpResponse::Ok().json(Message::ok(Some(result)).page(
     paginator.num_items().await.unwrap(),
@@ -235,7 +233,7 @@ pub async fn query(
 ///
 /// get user entity by uid
 #[auto_webapi_doc]
-#[get("a/{uid}")]
+#[get("{uid}")]
 pub async fn get(
   uid: web::Path<u64>,
   db: web::Data<DatabaseConnection>,

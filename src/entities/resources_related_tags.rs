@@ -10,8 +10,8 @@ use utoipa::ToSchema;
 pub struct Model {
   #[sea_orm(primary_key)]
   pub rrtid: u64,
-  pub rid: Option<u64>,
-  pub tid: Option<u64>,
+  pub rid: u64,
+  pub tid: u64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter)]

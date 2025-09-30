@@ -1,8 +1,8 @@
 use actix_web::{HttpResponse, Responder, delete, get, http::StatusCode, post, web};
-use cosmox_macros::{ActixWebError, auto_webapi_doc};
+use cosmox_macros::{ActixWebError, auto_webapi_doc, page_helper};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::core::plugin::plugin_manager::PluginManager;
 
@@ -10,6 +10,10 @@ use crate::core::plugin::plugin_manager::PluginManager;
 pub struct InstallPluginParams {
   pub url: Option<String>,
 }
+
+#[page_helper]
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct PluginQueryRequest {}
 
 /// Errors related to plugin management and execution.
 #[derive(Debug, Error, ActixWebError)]

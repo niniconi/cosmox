@@ -1,9 +1,18 @@
-use actix_web::{HttpResponse, Responder, get, web};
+use std::sync::Arc;
 
-use cosmox_macros::{ActixWebError, auto_webapi_doc};
+use actix_web::{HttpResponse, Responder, delete, get, post, web};
+
+use cosmox_macros::{ActixWebError, auto_webapi_doc, page_helper};
 use sea_orm::{DatabaseConnection, EntityTrait};
+use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
 
-use crate::{entities::resources, utils::message::Message};
+use crate::{
+  entities::{resources, tags},
+  into_message, into_message_page,
+  services::resource_service,
+  utils::message::Message,
+};
 
 /// Errors related to individual media file (resource) operations.
 #[derive(Debug, thiserror::Error, ActixWebError)]
@@ -46,21 +55,24 @@ pub enum ResourceError {
   InternalError(String),
 }
 
+#[derive(Serialize, Deserialize, IntoParams)]
+struct ResourceDeleteRequest {
+  rid: u64,
+}
+
+#[page_helper]
+#[derive(Deserialize, IntoParams)]
+pub struct ResourceQueryRequest {}
+
+#[derive(Deserialize, ToSchema)]
+pub struct ResourceAddTagRequest {
+  tags: Vec<u64>,
+}
+
 #[auto_webapi_doc]
 #[get("{rid}")]
-pub async fn get(
-  rid: web::Path<u64>,
-  db: web::Data<DatabaseConnection>,
-) -> Result<impl Responder, ResourceError> {
-  let resource = resources::Entity::find_by_id(*rid)
-    .one(db.as_ref())
-    .await
-    .unwrap();
-  if let Some(resource) = resource {
-    Ok(HttpResponse::Ok().json(Message::ok(Some(resource))))
-  } else {
-    Err(ResourceError::NotFound(rid.into_inner()))
-  }
+pub async fn get(rid: web::Path<u64>, db: web::Data<DatabaseConnection>) -> impl Responder {
+  into_message!(resource_service::get_resource(*rid, db.into_inner()).await)
 }
 
 #[auto_webapi_doc]
@@ -70,21 +82,21 @@ pub async fn add() -> impl Responder {
 }
 
 #[auto_webapi_doc]
-#[get("del")]
-pub async fn delete() -> impl Responder {
-  HttpResponse::NotImplemented().body("Not implemented del api")
+#[delete("delete")]
+pub async fn delete(
+  rid: web::Query<ResourceDeleteRequest>,
+  db: web::Data<DatabaseConnection>,
+) -> impl Responder {
+  into_message!(resource_service::delete_resource(rid.rid, db.into_inner()).await)
 }
 
 #[auto_webapi_doc]
 #[get("query")]
-pub async fn query() -> impl Responder {
-  HttpResponse::NotImplemented().body("Not implemented query api")
-}
-
-#[auto_webapi_doc]
-#[get("list")]
-pub async fn list() -> impl Responder {
-  HttpResponse::NotImplemented().body("Not implemented list api")
+pub async fn query(
+  params: web::Query<ResourceQueryRequest>,
+  db: web::Data<DatabaseConnection>,
+) -> impl Responder {
+  into_message_page!(resource_service::query_resources(params.into_inner(), db.into_inner()).await)
 }
 
 #[auto_webapi_doc]
@@ -94,7 +106,13 @@ pub async fn get_metadata() -> impl Responder {
 }
 
 #[auto_webapi_doc]
-#[get("{rid}/tag/add")]
-pub async fn add_tag() -> impl Responder {
-  HttpResponse::NotImplemented().body("Not implemented {rid}/tag/add api")
+#[post("{rid}/tag/add")]
+pub async fn add_tag(
+  rid: web::Path<u64>,
+  params: web::Json<ResourceAddTagRequest>,
+  db: web::Data<DatabaseConnection>,
+) -> impl Responder {
+  into_message!(
+    resource_service::add_tags_for_resource(*rid, params.tags.clone(), db.into_inner()).await
+  )
 }

@@ -1,15 +1,16 @@
 use proc_macro::TokenStream;
-use syn::{DeriveInput, ItemFn, parse_macro_input};
+use syn::{DeriveInput, ItemFn, ItemStruct, parse_macro_input};
 
 use crate::{
   actix_web_error::expand_derive_actix_web_error, api_doc::expand_attr_auto_webapi_doc,
-  metadata::expand_derive_metadata,
+  metadata::expand_derive_metadata, page::expand_attr_page_helper,
 };
 
 extern crate proc_macro;
 mod actix_web_error;
 mod api_doc;
 mod metadata;
+mod page;
 mod utils;
 
 /// For `webapi` documentation generation.
@@ -39,6 +40,15 @@ pub fn actix_web_error_derive(input: TokenStream) -> TokenStream {
 pub fn metdata_derive(input: TokenStream) -> TokenStream {
   let input = parse_macro_input!(input as DeriveInput);
   expand_derive_metadata(input)
+    .unwrap_or_else(syn::Error::into_compile_error)
+    .into()
+}
+
+/// generate page_helper fields in struct.
+#[proc_macro_attribute]
+pub fn page_helper(_attr: TokenStream, input: TokenStream) -> TokenStream {
+  let input = parse_macro_input!(input as ItemStruct);
+  expand_attr_page_helper(input)
     .unwrap_or_else(syn::Error::into_compile_error)
     .into()
 }

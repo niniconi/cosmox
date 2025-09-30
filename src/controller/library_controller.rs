@@ -1,12 +1,15 @@
 use std::sync::Arc;
 
 use actix_web::{HttpResponse, Responder, delete, get, post, web};
-use cosmox_macros::{ActixWebError, auto_webapi_doc};
+use cosmox_macros::{ActixWebError, auto_webapi_doc, page_helper};
 use sea_orm::{DatabaseConnection, EntityTrait};
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
-use crate::{entities::types, services::librarys_service, utils::message::Message};
+use crate::{
+  entities::types, into_message, into_message_page, services::librarys_service,
+  utils::message::Message,
+};
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct LibraryAddRequest {
@@ -18,6 +21,10 @@ pub struct LibraryAddRequest {
   pub tags: Vec<u64>,
   pub library_paths: Vec<String>,
 }
+
+#[page_helper]
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct LibraryQueryRequest {}
 
 /// Errors related to library (collection of media files) operations.
 #[derive(Debug, thiserror::Error, ActixWebError)]
@@ -57,20 +64,22 @@ pub enum LibraryError {
 }
 
 #[auto_webapi_doc]
-#[get("{id}")]
+#[get("{lid}")]
 pub async fn get(param: web::Path<u64>, db: web::Data<DatabaseConnection>) -> impl Responder {
-  let result = librarys_service::get_library(param.into_inner(), db.into_inner()).await;
-  HttpResponse::Ok().json(Message::ok(result.unwrap()))
+  into_message!(librarys_service::get_library(param.into_inner(), db.into_inner()).await)
 }
 
 #[auto_webapi_doc]
-#[get("list")]
-pub async fn list() -> impl Responder {
-  HttpResponse::NotImplemented().body("Not implemented list api")
+#[get("query")]
+pub async fn query(
+  params: web::Query<LibraryQueryRequest>,
+  db: web::Data<DatabaseConnection>,
+) -> impl Responder {
+  into_message_page!(librarys_service::query_libraies(params.into_inner(), db.into_inner()).await)
 }
 
 #[auto_webapi_doc]
-#[post("modify")]
+#[post("{lid}/modify")]
 pub async fn modify() -> impl Responder {
   HttpResponse::NotImplemented().body("Not implemented modify api")
 }

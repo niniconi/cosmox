@@ -42,7 +42,7 @@ pub mod utils;
   library_controller::modify,
   library_controller::add,
   library_controller::delete,
-  library_controller::list,
+  library_controller::query,
   library_controller::get_all_type,
   tag_controller::get,
   tag_controller::group_get,
@@ -58,7 +58,6 @@ pub mod utils;
   resource_controller::get_metadata,
   resource_controller::query,
   resource_controller::add_tag,
-  resource_controller::list,
   user_controller::get,
   user_controller::login,
   user_controller::sign_up,
@@ -145,43 +144,42 @@ async fn main() -> std::io::Result<()> {
           )
           .service(
             web::scope("library")
-              .service(library_controller::get)
               .service(library_controller::modify)
               .service(library_controller::add)
               .service(library_controller::delete)
-              .service(library_controller::list)
-              .service(library_controller::get_all_type),
+              .service(library_controller::query)
+              .service(library_controller::get_all_type)
+              .service(library_controller::get),
           )
           .service(
             web::scope("tag")
-              .service(tag_controller::get)
               .service(tag_controller::group_get)
               .service(tag_controller::add)
               .service(tag_controller::group_add)
               .service(tag_controller::group_del)
               .service(tag_controller::query)
               .service(tag_controller::group_query)
-              .service(tag_controller::all_query),
+              .service(tag_controller::all_query)
+              .service(tag_controller::get),
           )
           .service(
             web::scope("resource")
-              .service(resource_controller::get)
               .service(resource_controller::add)
               .service(resource_controller::delete)
               .service(resource_controller::get_metadata)
               .service(resource_controller::query)
               .service(resource_controller::add_tag)
-              .service(resource_controller::list),
+              .service(resource_controller::get),
           )
           .service(
             web::scope("user")
-              .service(user_controller::get)
               .service(user_controller::login)
               .service(user_controller::sign_up)
               .service(user_controller::delete)
               .service(user_controller::query)
               .service(user_controller::upload_avatar)
-              .service(user_controller::role_add),
+              .service(user_controller::role_add)
+              .service(user_controller::get),
           )
           .service(
             web::scope("item")

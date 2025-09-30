@@ -1,12 +1,23 @@
 use actix_web::{HttpResponse, Responder, delete, get, post, web};
-use cosmox_macros::{ActixWebError, auto_webapi_doc};
+use cosmox_macros::{ActixWebError, auto_webapi_doc, page_helper};
+use sea_orm::DatabaseConnection;
+use serde::Deserialize;
+use utoipa::IntoParams;
+
+use crate::{into_message, into_message_page, services::tag_service};
+
+#[page_helper]
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct TagQueryRequest {
+  tid: Option<u64>,
+}
 
 /// Errors related to tag management.
 #[derive(Debug, thiserror::Error, ActixWebError)]
 pub enum TagError {
   #[error("Tag '{0}' not found.")]
   #[code(404)]
-  NotFound(String),
+  NotFound(u64),
 
   #[error("Not authorized to manage tags.")]
   #[code(403)]
@@ -36,8 +47,11 @@ pub enum TagError {
 
 #[auto_webapi_doc]
 #[get("{id}")]
-pub async fn get() -> impl Responder {
-  HttpResponse::NotImplemented().body("Not implemented {id} api")
+pub async fn get(
+  tid: web::Path<u64>,
+  db: web::Data<DatabaseConnection>,
+) -> Result<impl Responder, TagError> {
+  into_message!(tag_service::get_tag(*tid, db.into_inner()).await)
 }
 
 #[auto_webapi_doc]
@@ -47,9 +61,9 @@ pub async fn group_get(params: web::Path<String>) -> impl Responder {
 }
 
 #[auto_webapi_doc]
-#[post("{id}")]
-pub async fn add() -> impl Responder {
-  HttpResponse::NotImplemented().body("Not implemented {id} api")
+#[post("add")]
+pub async fn add(tid: web::Path<u64>, db: web::Data<DatabaseConnection>) -> impl Responder {
+  HttpResponse::NotImplemented().body("Not implemented add api")
 }
 
 #[auto_webapi_doc]
@@ -66,8 +80,11 @@ pub async fn group_del() -> impl Responder {
 
 #[auto_webapi_doc]
 #[get("query")]
-pub async fn query() -> impl Responder {
-  HttpResponse::NotImplemented().body("Not implemented query api")
+pub async fn query(
+  params: web::Query<TagQueryRequest>,
+  db: web::Data<DatabaseConnection>,
+) -> impl Responder {
+  into_message_page!(tag_service::query_tag(params.into_inner(), db.into_inner()).await)
 }
 
 #[auto_webapi_doc]
