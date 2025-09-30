@@ -70,12 +70,10 @@ pub async fn add_tags_for_resource(
           })
           .collect::<Vec<_>>();
 
-        Ok(
-          try_join_all(add_tag_futures)
-            .await
-            .inspect_err(|err| log::error!("{err}"))
-            .map_err(|_err| ResourceError::InternalError("Database error".to_string()))?,
-        )
+        try_join_all(add_tag_futures)
+          .await
+          .inspect_err(|err| log::error!("{err}"))
+          .map_err(|_err| ResourceError::InternalError("Database error".to_string()))
       })
     })
     .await;

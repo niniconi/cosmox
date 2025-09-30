@@ -31,7 +31,7 @@ pub async fn add_tag(tag: tags::Model, db: Arc<DatabaseConnection>) -> Result<()
     .insert(db.as_ref())
     .await
     .inspect_err(|err| log::error!("{err}"))
-    .map_err(|_err| TagError::InternalError(format!("Database error")))?;
+    .map_err(|_err| TagError::InternalError("Database error".to_string()))?;
   Ok(())
 }
 
@@ -40,7 +40,7 @@ pub async fn delete_tag(tid: u64, db: Arc<DatabaseConnection>) -> Result<(), Tag
     .exec(db.as_ref())
     .await
     .inspect_err(|err| log::error!("{err}"))
-    .map_err(|_err| TagError::InternalError(format!("Database error")))?;
+    .map_err(|_err| TagError::InternalError("Database error".to_string()))?;
   Ok(())
 }
 
@@ -71,6 +71,6 @@ pub async fn query_tag(
 
   match paginator.fetch_page(page).await {
     Ok(result) => Ok((result, pagination)),
-    Err(err) => Err(TagError::InternalError(format!("Database error"))),
+    Err(err) => Err(TagError::InternalError("Database error".to_string())),
   }
 }

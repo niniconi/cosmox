@@ -107,7 +107,7 @@ impl Pagination {
 macro_rules! into_message {
   ($result:expr) => {
     match $result {
-      Ok(data) => Ok(HttpResponse::Ok().json(crate::utils::message::Message::ok(Some(data)))),
+      Ok(data) => Ok(HttpResponse::Ok().json($crate::utils::message::Message::ok(Some(data)))),
       Err(err) => Err(err),
     }
   };
@@ -118,7 +118,7 @@ macro_rules! into_message_page {
   ($result:expr) => {
     match $result {
       Ok((data, pagination)) => {
-        let mut message = crate::utils::message::Message::ok(Some(data));
+        let mut message = $crate::utils::message::Message::ok(Some(data));
         message.pagination = Some(pagination);
         Ok(HttpResponse::Ok().json(message))
       }
