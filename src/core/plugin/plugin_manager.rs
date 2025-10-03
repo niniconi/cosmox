@@ -27,7 +27,7 @@ use crate::{
 };
 
 // use tokio::sync::{Mutex, mpsc};
-use wasmtime_wasi::p2::WasiCtxBuilder;
+use wasmtime_wasi::WasiCtxBuilder;
 
 #[derive(Default, Debug, Clone)]
 pub struct PluginManager {

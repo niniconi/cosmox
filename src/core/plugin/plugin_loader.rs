@@ -8,7 +8,7 @@ use anyhow::Result;
 use wasmtime::component::{Component, HasSelf, Linker, ResourceTable};
 use wasmtime::*;
 // use wasmtime_wasi::p2::bindings::sync::Command;
-use wasmtime_wasi::p2::{IoView, WasiCtx, WasiView};
+use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
 use bindings::cosmox::plugin::cosmox_api as bindings_cosmox_api;
 use bindings::cosmox::plugin::cosmox_types as bindings_cosmox_types;
@@ -44,14 +44,12 @@ impl Debug for ComponentRunStates {
   }
 }
 
-impl IoView for ComponentRunStates {
-  fn table(&mut self) -> &mut ResourceTable {
-    &mut self.resource_table
-  }
-}
 impl WasiView for ComponentRunStates {
-  fn ctx(&mut self) -> &mut WasiCtx {
-    &mut self.wasi_ctx
+  fn ctx(&mut self) -> WasiCtxView<'_> {
+    WasiCtxView {
+      ctx: &mut self.wasi_ctx,
+      table: &mut self.resource_table,
+    }
   }
 }
 

@@ -46,8 +46,8 @@ regex = "1.11.1"
 actix-multipart = "0.7.2"
 futures-util = "0.3.31"
 sysinfo = "0.35.2"
-wasmtime = "34.0.1"
-wasmtime-wasi = "34.0.1"
+wasmtime = "37.0.1"
+wasmtime-wasi = "37.0.1"
 tracing-appender = "0.2.3"
 cosmox-api = { path = "./cosmox-api" }
 cosmox-macros = { path = "./cosmox-macros" }
