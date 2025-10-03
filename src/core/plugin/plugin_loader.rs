@@ -244,19 +244,21 @@ pub fn load<P: AsRef<Path> + Debug>(path: P) -> Result<Plugin, PluginLoadError> 
           }
         } else if metadata.is_dir() && entry.file_name() == "wasm" {
           // load wasm extensions
-          let result = utils::fs::walk_dir_with_ext(entry.path(), ".wasm")
-            .inspect_err(|err| log::error!("Failed to walk wasm dir by {err}"));
-          if let Ok(wasm_paths) = result {
-            for wasm_path in wasm_paths {
-              log::trace!("Loading wasm from {wasm_path:?}");
+          match utils::fs::walk_dir_with_ext(entry.path(), ".wasm") {
+            Ok(wasm_paths) => {
+              for wasm_path in wasm_paths {
+                log::trace!("Loading wasm from {wasm_path:?}");
 
-              if let Ok(wasm_component) =
-                load_wasm(plugin_id, wasm_path, &PluginManager::get_wasm_engine())
-              {
-                wasm_extensions.insert(wasm_component.id, wasm_component.clone());
-                PluginManager::register_wasm_component(wasm_component.id, wasm_component);
+                match load_wasm(plugin_id, wasm_path, &PluginManager::get_wasm_engine()) {
+                  Ok(wasm_component) => {
+                    wasm_extensions.insert(wasm_component.id, wasm_component.clone());
+                    PluginManager::register_wasm_component(wasm_component.id, wasm_component);
+                  }
+                  Err(err) => log::error!("{err}"),
+                }
               }
             }
+            Err(err) => log::error!("Failed to walk wasm dir by {err}"),
           }
         } else if metadata.is_dir() && entry.file_name() == "wasm-ui" {
           let _result = utils::fs::walk_dir_files(entry.path())
