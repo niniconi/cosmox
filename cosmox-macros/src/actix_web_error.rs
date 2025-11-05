@@ -91,7 +91,7 @@ pub fn expand_derive_actix_web_error(input: DeriveInput) -> syn::Result<TokenStr
     let error_response_match_block = match &variant.fields {
       Fields::Unit => quote! {
 
-        #name::#variant_name => HttpResponse::build(self.status_code()).json(crate::utils::message::Message {
+        #name::#variant_name => actix_web::HttpResponse::build(self.status_code()).json(crate::utils::message::Message {
           code : "AAASA".to_string(),
           message : #format_text.to_string(),
           status: status,
@@ -112,7 +112,7 @@ pub fn expand_derive_actix_web_error(input: DeriveInput) -> syn::Result<TokenStr
         };
 
         quote! {
-          #name::#variant_name(#(#bindings),* #dots) => HttpResponse::build(self.status_code()).json(crate::utils::message::Message {
+          #name::#variant_name(#(#bindings),* #dots) => actix_web::HttpResponse::build(self.status_code()).json(crate::utils::message::Message {
             code : "AAASA".to_string(),
             message : format!(#format_text, #(#bindings),*),
             status: status,
@@ -136,7 +136,7 @@ pub fn expand_derive_actix_web_error(input: DeriveInput) -> syn::Result<TokenStr
           quote! {}
         };
         quote! {
-          #name::#variant_name(#(#bindings),* #dots) => HttpResponse::build(self.status_code()).json(crate::utils::message::Message {
+          #name::#variant_name(#(#bindings),* #dots) => actix_web::HttpResponse::build(self.status_code()).json(crate::utils::message::Message {
             code : "AAASA".to_string(),
             message : format!(#format_text, #(#bindings),*),
             status: status,
