@@ -62,7 +62,6 @@ sqlx-cli = { version = "0.8.6", features = ["mysql"] }
 criterion = "0.6.0"
 
 [build-dependencies]
-weaver-orm-generator = { workspace = true }
 serde = "1.0.215"
 serde_yaml = "0.9.34"
 wit-bindgen = { version = "0.43.0", features = ["async"] }
@@ -94,4 +93,3 @@ authors = [
 
 [workspace.dependencies]
 cosmox-macros = { path = "cosmox-macros" }
-weaver-orm-generator = { path = "lib/weaver-orm-generator" }
