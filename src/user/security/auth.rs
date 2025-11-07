@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-  sub: String,
-  exp: u64,
+  pub sub: String,
+  pub exp: u64,
 }
 
 static JWT_SECRET_KEY: LazyLock<Vec<u8>> = LazyLock::new(|| {

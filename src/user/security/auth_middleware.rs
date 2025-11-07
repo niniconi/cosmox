@@ -49,22 +49,25 @@ where
   forward_ready!(service);
 
   fn call(&self, req: ServiceRequest) -> Self::Future {
-    let auth_service = req.app_data::<Data<PolicyService>>().unwrap();
-    let db = req.app_data::<Data<DatabaseConnection>>().unwrap();
-    let token = req.headers().get("token");
-
-    if let Err(error) =
-      auth_service.check_resource_access(token, req.path(), db.clone().into_inner())
-    {
-      return Box::pin(async { Err(actix_web::error::ErrorUnauthorized("Unauthorized access")) });
-    }
+    let auth_service = req.app_data::<Data<PolicyService>>().unwrap().clone();
+    let db = req.app_data::<Data<DatabaseConnection>>().unwrap().clone();
+    let path = req.path().to_string();
+    let method = req.method().clone();
+    let token = req.headers().get("token").cloned();
 
     let fut = self.service.call(req);
 
     Box::pin(async move {
-      let res = fut.await?;
+      if let Err(error) = auth_service
+        .check_resource_access(token, path,method, db.clone().into_inner())
+        .await
+      {
+        Err(actix_web::error::ErrorUnauthorized(format!("{error}")))
+      } else {
+        let res = fut.await?;
 
-      Ok(res)
+        Ok(res)
+      }
     })
   }
 }

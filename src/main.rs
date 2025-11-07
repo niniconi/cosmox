@@ -76,6 +76,9 @@ pub mod utils;
   user_controller::role_add,
   acl_controller::add_role,
   acl_controller::delete_role,
+  acl_controller::add_permission,
+  acl_controller::delete_permission,
+  acl_controller::add_permission_for_role,
   file_controller::pull,
   file_controller::push,
   scanner_controller::scan,
@@ -198,7 +201,10 @@ async fn main() -> std::io::Result<()> {
               .service(
                 web::scope("acl")
                   .service(acl_controller::add_role)
-                  .service(acl_controller::delete_role),
+                  .service(acl_controller::delete_role)
+                  .service(acl_controller::add_permission)
+                  .service(acl_controller::delete_permission)
+                  .service(acl_controller::add_permission_for_role),
               ),
           )
           .service(

@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use super::security::auth;
+use crate::into_message;
 use crate::utils::default_constants::default_page_size;
 use crate::{entities::users, utils::message::Message};
 use validator::{Validate, ValidationErrorsKind};
@@ -276,10 +277,10 @@ pub async fn login(
     match auth::verify_password(&body.password, &user.password) {
       Ok(_) => {
         // generate token
-        Ok(
-          HttpResponse::Ok()
-            .body(auth::generate_jwt(&user.uid.to_string(), auth::get_jwt_secret_key()).unwrap()),
-        )
+        let token = auth::generate_jwt(&user.uid.to_string(), auth::get_jwt_secret_key())
+          .inspect_err(|err| log::error!("{err}"))
+          .map_err(|_err| UserError::InternalError("Token generate error".to_string()));
+        into_message!(token)
       }
       Err(err) => {
         if let argon2::password_hash::Error::Password = err {
