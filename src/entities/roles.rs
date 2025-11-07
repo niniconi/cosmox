@@ -10,11 +10,12 @@ use utoipa::ToSchema;
 pub struct Model {
   #[sea_orm(primary_key)]
   pub rid: u64,
-  pub label: Option<String>,
+  pub name: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter)]
-pub enum Relation {}
+pub enum Relation {
+}
 
 impl RelationTrait for Relation {
   fn def(&self) -> RelationDef {

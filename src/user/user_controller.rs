@@ -25,7 +25,7 @@ pub struct UserSignUpRequest {
   #[validate(length(
     min = 6,
     max = 128,
-    message = "The 'username' field must be between 6 and 128 characters."
+    message = "The 'password' field must be between 6 and 128 characters."
   ))]
   pub password: String,
   pub confirm_password: String,
@@ -272,16 +272,22 @@ pub async fn login(
       .await
       .unwrap(),
   };
-  if !user.is_empty() {
-    let user = user.first().unwrap();
-    if auth::verify_password(&body.password, &user.password).unwrap() {
-      // generate token
-      Ok(
-        HttpResponse::Ok()
-          .body(auth::generate_jwt(&user.uid.to_string(), user.username.as_bytes()).unwrap()),
-      )
-    } else {
-      Err(UserError::LoginFailed(body.ident.to_string()))
+  if let Some(user) = user.first() {
+    match auth::verify_password(&body.password, &user.password) {
+      Ok(_) => {
+        // generate token
+        Ok(
+          HttpResponse::Ok()
+            .body(auth::generate_jwt(&user.uid.to_string(), auth::get_jwt_secret_key()).unwrap()),
+        )
+      }
+      Err(err) => {
+        if let argon2::password_hash::Error::Password = err {
+          Err(UserError::InvalidPassword)
+        } else {
+          Err(UserError::LoginFailed(body.ident.to_string()))
+        }
+      }
     }
   } else {
     Err(UserError::NotFound(1))

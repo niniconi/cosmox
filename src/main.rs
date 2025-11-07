@@ -4,7 +4,10 @@
 use core::io::file_controller;
 use std::env;
 
-use actix_web::{App, HttpServer, web};
+use actix_web::{
+  App, HttpServer,
+  web::{self, service},
+};
 use configuration::Configuration;
 use controller::{
   library_controller, resource_controller, system_controller, tag_controller, ui_controller,
@@ -21,7 +24,13 @@ use core::{
   scanner::controller::{path_tree_scanner, scanner_controller},
 };
 
-use crate::core::plugin::plugin_manager::PluginManager;
+use crate::{
+  core::plugin::plugin_manager::PluginManager,
+  user::{
+    acl_controller,
+    security::{auth_middleware::TokenAuth, policy_service::PolicyService},
+  },
+};
 
 pub mod configuration;
 pub mod controller;
@@ -65,6 +74,8 @@ pub mod utils;
   user_controller::query,
   user_controller::upload_avatar,
   user_controller::role_add,
+  acl_controller::add_role,
+  acl_controller::delete_role,
   file_controller::pull,
   file_controller::push,
   scanner_controller::scan,
@@ -123,6 +134,8 @@ async fn main() -> std::io::Result<()> {
 
   PluginManager::start();
 
+  let policy_service = web::Data::new(PolicyService {});
+
   log::info!("start");
 
   #[cfg(debug_assertions)]
@@ -132,6 +145,8 @@ async fn main() -> std::io::Result<()> {
     App::new()
       .app_data(db_connection_app_data.clone())
       .app_data(config_app_data.clone())
+      .app_data(policy_service.clone())
+      .wrap(TokenAuth)
       .service(
         web::scope("api")
           .service(
@@ -179,7 +194,12 @@ async fn main() -> std::io::Result<()> {
               .service(user_controller::query)
               .service(user_controller::upload_avatar)
               .service(user_controller::role_add)
-              .service(user_controller::get),
+              .service(user_controller::get)
+              .service(
+                web::scope("acl")
+                  .service(acl_controller::add_role)
+                  .service(acl_controller::delete_role),
+              ),
           )
           .service(
             web::scope("item")

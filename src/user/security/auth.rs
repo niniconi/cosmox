@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use argon2::{
   Argon2, PasswordVerifier,
   password_hash::{PasswordHasher, SaltString, rand_core::OsRng},
@@ -6,12 +8,24 @@ use argon2::{
 use chrono::{Duration, Utc};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode, errors::Error as JwtError};
 use jsonwebtoken::{DecodingKey, Validation, decode};
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
   sub: String,
   exp: u64,
+}
+
+static JWT_SECRET_KEY: LazyLock<Vec<u8>> = LazyLock::new(|| {
+  let mut rng = rand::rng();
+  let mut jwt_secret_key = vec![0u8; 32];
+  rng.fill_bytes(&mut jwt_secret_key[..]);
+  jwt_secret_key
+});
+
+pub fn get_jwt_secret_key() -> &'static [u8] {
+  &JWT_SECRET_KEY
 }
 
 pub fn hash_password(password: &str) -> Result<String, argon2::password_hash::Error> {

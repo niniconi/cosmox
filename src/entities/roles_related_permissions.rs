@@ -6,10 +6,12 @@ use utoipa::ToSchema;
 #[derive(
   Debug, Clone, PartialEq, Eq, Hash, FromRow, Serialize, Deserialize, ToSchema, DeriveEntityModel,
 )]
-#[sea_orm(table_name = "users_related_permissions")]
+#[sea_orm(table_name = "roles_related_permissions")]
 pub struct Model {
   #[sea_orm(primary_key)]
-  pub urpid: u64,
+  pub rrpid: u64,
+  pub rid: u64,
+  pub pid: u64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter)]
