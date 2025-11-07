@@ -79,8 +79,7 @@ resolver = "2"
 members = [
   "cosmox-api",
   "cosmox-macros",
-  "cosmox-plugin-pack",
-  "lib/weaver-orm-generator"
+  "cosmox-plugin-pack"
 ]
 
 [workspace.package]
