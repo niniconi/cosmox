@@ -19,9 +19,9 @@ serde = "1.0.215"
 serde_json = "1"
 serde_yaml = "0.9.34"
 futures = "0.3"
-jsonwebtoken = "9.3.1"
+jsonwebtoken = { version = "10.2.0", features = ["aws_lc_rs"] }
 reqwest = "0.12.20"
-scraper = "0.23.1"
+scraper = "0.24.0"
 uuid = "1.17.0"
 validator = { version = "0.20.0", features = ["derive"] }
 utoipa = { version = "5.4.0", features = ["chrono"] }
@@ -30,7 +30,7 @@ tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread", "net", "s
 chrono = { version = "0.4.41", features = ["serde"] }
 clap = "4.5.40"
 notify = "8.0.0"
-tokio-cron-scheduler = "0.14.0"
+tokio-cron-scheduler = "0.15.1"
 config = "0.15.11"
 moka = { version = "0.12.10", features = ["future"] }
 thiserror = "2.0.12"
@@ -38,16 +38,16 @@ anyhow = "1.0.98"
 casbin = "2.10.1"
 argon2 = "0.5.3"
 otp = "0.2.0"
-ffmpeg-next = "7.1.0"
+ffmpeg-next = "8.0.0"
 rand_core = { version = "0.9.3", features = ["std"] }
 actix-files = "0.6.6"
 sea-orm = { version = "1.1.12", features = ["sqlx-mysql", "runtime-tokio-rustls", "macros"] }
 regex = "1.11.1"
 actix-multipart = "0.7.2"
 futures-util = "0.3.31"
-sysinfo = "0.35.2"
-wasmtime = "37.0.1"
-wasmtime-wasi = "37.0.1"
+sysinfo = "0.37.2"
+wasmtime = "39.0.1"
+wasmtime-wasi = "39.0.1"
 tracing-appender = "0.2.3"
 cosmox-api = { path = "./cosmox-api" }
 cosmox-macros = { path = "./cosmox-macros" }
@@ -59,12 +59,12 @@ rand = "0.9.2"
 
 [dev-dependencies]
 sqlx-cli = { version = "0.8.6", features = ["mysql"] }
-criterion = "0.6.0"
+criterion = "0.8.0"
 
 [build-dependencies]
 serde = "1.0.215"
 serde_yaml = "0.9.34"
-wit-bindgen = { version = "0.43.0", features = ["async"] }
+wit-bindgen = { version = "0.48.1", features = ["async"] }
 
 [profile.bench]
 debug = false
