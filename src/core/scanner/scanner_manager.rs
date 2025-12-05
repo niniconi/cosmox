@@ -1,7 +1,7 @@
 use std::{
   fs::{self},
   path::{Path, PathBuf},
-  sync::Arc,
+  sync::{Arc, Mutex},
   thread::sleep,
   time::Duration,
 };
@@ -158,8 +158,8 @@ where
         };
 
         let child_metadata = Arc::new(Metadata::<()> {
-          name: entry.file_name().to_str().unwrap_or("Error").to_string(),
-          url: "file:".to_string() + entry.path().to_str().unwrap_or("Error"),
+          name: Mutex::new(entry.file_name().to_str().unwrap_or("Error").to_string()),
+          url: Mutex::new("file:".to_string() + entry.path().to_str().unwrap_or("Error")),
           metadata_type: metadata_type,
           ..Default::default()
         });
