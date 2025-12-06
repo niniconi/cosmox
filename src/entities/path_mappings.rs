@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
   #[sea_orm(primary_key)]
   pub pmid: u64,
-  pub path: Option<String>,
-  pub content_type: Option<String>,
+  pub path: String,
+  pub mime_type: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
