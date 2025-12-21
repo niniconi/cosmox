@@ -70,6 +70,47 @@ interface cosmox-types {
 
   // --- Data type definitions shared between Host and Wasm ---
 
+  variant ai-api-error {
+    // BadInput: The user's input format, parameters, or content is invalid.
+    // Typically corresponds to HTTP 400 Bad Request.
+    bad-input(string),
+
+    // Unauthorized: Authentication information is missing or invalid (e.g., incorrect API key).
+    // Typically corresponds to HTTP 401 Unauthorized.
+    unauthorized,
+
+    // PermissionDenied: Authentication succeeded, but the user lacks the necessary permissions for the operation.
+    // Typically corresponds to HTTP 403 Forbidden.
+    permission-denied,
+
+    // NotFound: The requested model or resource does not exist.
+    // Typically corresponds to HTTP 404 Not Found.
+    not-found(string),
+
+    // QuotaExceeded: The user's request volume or usage has exceeded their allocated limit.
+    // Typically corresponds to HTTP 429 Too Many Requests.
+    quota-exceeded(string),
+
+    // ModelLoadFailed: The server could not successfully load the requested LLM model.
+    model-load-failed(string),
+
+    // ContextWindowExceeded: The input Prompt length exceeded the model's maximum context window limit.
+    // A specific error during the inference process.
+    context-window-exceeded(u32), // u32 could represent the exact number of tokens over the limit.
+
+    // RateLimitExceeded: Internal server-side concurrency or rate limits (unrelated to user quotas).
+    // Typically corresponds to HTTP 503 Service Unavailable or a specific internal error.
+    rate-limit-exceeded,
+
+    // InferenceTimeout: Model inference computation took too long, exceeding the preset limit.
+    // Typically corresponds to HTTP 504 Gateway Timeout.
+    inference-timeout(u32), // u32 could represent the time (in seconds) used before timeout.
+
+    // InternalError: A generic server-side error not caught by the above types.
+    // Typically corresponds to HTTP 500 Internal Server Error.
+    internal-error(string),
+  }
+
   /// Represents errors that can occur when registering an event listener.
   variant listener-registration-error {
     unknown,
@@ -198,10 +239,12 @@ interface configuration-manager {
 /// Host notification interface, used for the host to send general events or status updates to the plugin
 interface host-notifier {
   use cosmox-types.{plugin-result};
+  use context.{event-context};
 
   /// Called when the host environment changes, such as a host program version update or user session change.
   /// `event` is binary or serialized data related to the event.
-  on-event: func(event: list<u8>) -> plugin-result;
+  /// deprecated
+  on-event: func(event: list<u8>, context: event-context) -> plugin-result;
 }
 
 /// Plugin telemetry and health report interface
@@ -224,7 +267,7 @@ interface command-handler {
 
 /// API interfaces from the host
 interface cosmox-api {
-  use cosmox-types.{listener-registration-error, log-level};
+  use cosmox-types.{listener-registration-error, log-level, ai-api-error};
 
   /// Used to print logs or debug information to the host environment
   log: func(level: log-level,message: string);
@@ -249,6 +292,47 @@ interface cosmox-api {
   /// Get supported media types in cosmox
   /// This API returns the media types supported by `cosmox` and those extended by `plugins`.
   get-supported-media-types: func() -> list<string>;
+
+  ai: func(prompt: string) -> result<string, ai-api-error>;
+}
+
+interface context{
+  resource metadata-handle {
+    constructor();
+    insert: func(query:metadata-query, data:list<u8>);
+    delete: func(query:metadata-query);
+    modify: func(query:metadata-query, field:string, data:list<u8>);
+    query-field: func(query:metadata-query, field:string) -> option<list<u8>>;
+    query: func(query:metadata-query) -> option<list<u8>>;
+    query-all: func(query: metadata-query) -> list<u64>;
+    move: func(query:metadata-query);
+  }
+
+  variant path-mapping-handle-error {
+    invalid-format(string)
+  }
+
+  resource path-mapping-handle{
+    constructor();
+    push: func(rid:u64, field: string, link:string) -> result<_, path-mapping-handle-error>;
+  }
+
+  resource tag-handle{
+    constructor();
+    add-tag: func(rid:u64, label: tuple<string, string>) -> result<_, string>;
+    add-tags: func(rid:u64, labels: list<tuple<string,string>>) -> result<_, string>;
+    delete-tag: func(tid: u64) -> result<_, string>;
+  }
+
+  variant metadata-query{
+      path(string),
+      id(u64)
+  }
+
+  variant event-context {
+    metadata-ready-context(metadata-handle),
+    metadata-local-ready-context(tuple<metadata-handle, path-mapping-handle, tag-handle>),
+  }
 }
 
 /// The plugin's "world," defining all the interfaces imported and exported by the plugin
@@ -259,6 +343,7 @@ world plugin-host-world {
   // import wasi:cli/stderr@0.2.0;
 
   import cosmox-api;
+  import context;
 
   export core-lifecycle;
   export configuration-manager;

@@ -1,19 +1,19 @@
 use std::sync::Arc;
 
 use actix_files::NamedFile;
-use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 use tokio::{fs::File, io::AsyncWriteExt};
 use url::Url;
 
-use crate::{core::io::file_controller::FileError, entities::path_mappings};
+use crate::{
+  configuration::Configuration, core::io::file_controller::FileError, entities::path_mappings,
+};
 
 async fn local_file_handler(url: &Url, id: u64) -> Result<NamedFile, FileError> {
-  Ok(
-    NamedFile::open_async(url.path())
-      .await
-      .inspect_err(|err| log::error!("Open named file error: {err}"))
-      .map_err(|err| FileError::InternalError("IO error".to_string()))?,
-  )
+  NamedFile::open_async(url.path())
+    .await
+    .inspect_err(|err| log::error!("Open named file error: {err}"))
+    .map_err(|err| FileError::InternalError("IO error".to_string()))
 }
 
 async fn http_file_handler(url: &Url, id: u64) -> Result<NamedFile, FileError> {
@@ -58,12 +58,10 @@ async fn http_file_handler(url: &Url, id: u64) -> Result<NamedFile, FileError> {
     .inspect_err(|err| log::error!("Save temp file({temp_path:?}) error: {err}"))
     .map_err(|err| FileError::InternalError("IO error".to_string()))?;
 
-  Ok(
-    NamedFile::open_async(temp_path)
-      .await
-      .inspect_err(|err| log::error!("Open named file error: {err}"))
-      .map_err(|err| FileError::InternalError("IO error".to_string()))?,
-  )
+  NamedFile::open_async(temp_path)
+    .await
+    .inspect_err(|err| log::error!("Open named file error: {err}"))
+    .map_err(|err| FileError::InternalError("IO error".to_string()))
 }
 
 /// pull item from server by `NamedFile`
@@ -98,4 +96,18 @@ pub async fn pull_item_by_named_file(
     }
     None => Err(FileError::NotFound(id)),
   }
+}
+
+pub async fn push_item_link(link: Url, db: Arc<DatabaseConnection>) -> Result<u64, anyhow::Error> {
+  let path_mapping = path_mappings::ActiveModel {
+    path: Set(link.to_string()),
+    mime_type: Set("external".to_string()),
+    ..Default::default()
+  };
+  let path_mapping = path_mapping
+    .insert(db.as_ref())
+    .await
+    .inspect_err(|err| log::error!("{err}"))
+    .map_err(|err| FileError::InternalError("Unknown error".to_string()))?;
+  Ok(path_mapping.pmid)
 }

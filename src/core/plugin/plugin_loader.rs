@@ -5,24 +5,37 @@ use std::sync::{Arc, Mutex};
 use std::{fs, path::Path};
 
 use anyhow::Result;
+use tracing::{Level, info_span, span};
 use wasmtime::component::{Component, HasSelf, Linker, ResourceTable};
 use wasmtime::*;
 // use wasmtime_wasi::p2::bindings::sync::Command;
 use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 
+use bindings::cosmox::plugin::context as bindings_context;
 use bindings::cosmox::plugin::cosmox_api as bindings_cosmox_api;
 use bindings::cosmox::plugin::cosmox_types as bindings_cosmox_types;
 use cosmox_api::{self, Event};
+use wasmtime_wasi_http::{WasiHttpCtx, WasiHttpView};
 
+use crate::core::ai::call_llm;
 use crate::core::plugin::plugin_manager::PluginManager;
 use crate::core::plugin::{About, Plugin};
 use crate::core::plugin::{WasmComponent, WasmUiExtension};
 use crate::utils;
 
 pub mod bindings {
+  pub use super::super::context::event::{MetadataContext, PathMappingContext, TagContext};
   use wasmtime::component::bindgen;
+
   bindgen!({
-    world: "plugin-host-world"
+    world: "plugin-host-world",
+    exports: {default: async | trappable},
+    with: {
+        "cosmox:plugin/context.metadata-handle": MetadataContext,
+        "cosmox:plugin/context.path-mapping-handle": PathMappingContext,
+        "cosmox:plugin/context.tag-handle": TagContext,
+    },
+    imports: { "cosmox:plugin/cosmox-api.ai" : async, "cosmox:plugin/context":  trappable }
   });
 }
 
@@ -34,6 +47,7 @@ pub enum PluginLoadError {
 
 pub struct ComponentRunStates {
   pub wasi_ctx: WasiCtx,
+  pub wasi_http_ctx: WasiHttpCtx,
   pub resource_table: ResourceTable,
   pub plugin_data: CosmoxPluginData,
 }
@@ -53,31 +67,68 @@ impl WasiView for ComponentRunStates {
   }
 }
 
+impl WasiHttpView for ComponentRunStates {
+  fn ctx(&mut self) -> &mut WasiHttpCtx {
+    &mut self.wasi_http_ctx
+  }
+  fn table(&mut self) -> &mut ResourceTable {
+    &mut self.resource_table
+  }
+}
+
 pub struct CosmoxPluginData {
   pub bind_events: Mutex<Vec<Arc<cosmox_api::Event>>>,
   pub plugin_id: u64,
   pub wasm_id: u64,
+  pub name: String,
 }
 
+impl bindings_context::Host for ComponentRunStates {}
+
 impl bindings_cosmox_api::Host for CosmoxPluginData {
+  fn ai(
+    &mut self,
+    prompt: String,
+  ) -> impl Future<Output = Result<String, bindings_cosmox_types::AiApiError>> {
+    async fn warp(prompt: String) -> Result<String, bindings_cosmox_types::AiApiError> {
+      call_llm(prompt.as_str())
+        .await
+        .map_err(|err| bindings_cosmox_types::AiApiError::InternalError(err.to_string()))
+    }
+
+    warp(prompt)
+  }
+
   fn log(&mut self, log: bindings_cosmox_types::LogLevel, message: String) {
     match log {
       bindings_cosmox_types::LogLevel::Info => {
+        let span = span!(Level::INFO,"cosmox::plugin", plugin = %self.name);
+        let _enter = span.enter();
         log::info!("{message}")
       }
       bindings_cosmox_types::LogLevel::Trace => {
+        let span = span!(Level::TRACE, "cosmox::plugin", plugin = %self.name);
+        let _enter = span.enter();
         log::trace!("{message}")
       }
       bindings_cosmox_types::LogLevel::Debug => {
+        let span = span!(Level::DEBUG, "cosmox::plugin", plugin = %self.name);
+        let _enter = span.enter();
         log::debug!("{message}")
       }
       bindings_cosmox_types::LogLevel::Warn => {
+        let span = span!(Level::WARN, "cosmox::plugin", plugin = %self.name);
+        let _enter = span.enter();
         log::warn!("{message}")
       }
       bindings_cosmox_types::LogLevel::Error => {
+        let span = span!(Level::ERROR, "cosmox::plugin", plugin = %self.name);
+        let _enter = span.enter();
         log::error!("{message}")
       }
       bindings_cosmox_types::LogLevel::Fatal => {
+        let span = span!(Level::ERROR, "cosmox::plugin", plugin = %self.name);
+        let _enter = span.enter();
         log::error!("{message}")
       }
     }
@@ -150,7 +201,10 @@ where
   let wasm_id = PluginManager::gen_wasm_autoincrement();
   let mut linker: Linker<ComponentRunStates> = Linker::new(engine);
 
-  wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
+  // wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
+  wasmtime_wasi::p2::add_to_linker_async(&mut linker)?;
+  // wasmtime_wasi::p3::add_to_linker(&mut linker)?;
+  wasmtime_wasi_http::add_only_http_to_linker_async(&mut linker)?;
 
   // Create a WASI context and put it in a Store; all instances in the store
   // share this context. `WasiCtxBuilder` provides a number of ways to
@@ -167,13 +221,21 @@ where
   // };
 
   let component = Component::from_file(engine, &path)?;
+  let name = path
+    .as_ref()
+    .file_name()
+    .map(|x| x.to_str().unwrap().to_string())
+    .unwrap_or("".to_string());
 
   bindings::cosmox::plugin::cosmox_api::add_to_linker::<_, HasSelf<_>>(&mut linker, |s| {
     &mut s.plugin_data
   })?;
 
+  bindings::cosmox::plugin::context::add_to_linker::<_, HasSelf<_>>(&mut linker, |s| s)?;
+
   Ok(Arc::new(WasmComponent {
     id: wasm_id,
+    name: name,
     plugin_id: plugin_id,
     path: PathBuf::from(path.as_ref()),
     compoent: component,
@@ -254,7 +316,10 @@ pub fn load<P: AsRef<Path> + Debug>(path: P) -> Result<Plugin, PluginLoadError> 
                     wasm_extensions.insert(wasm_component.id, wasm_component.clone());
                     PluginManager::register_wasm_component(wasm_component.id, wasm_component);
                   }
-                  Err(err) => log::error!("{err}"),
+                  Err(err) => {
+                    log::error!("{err}")
+                    // TODO error handing
+                  }
                 }
               }
             }
@@ -314,7 +379,10 @@ mod test {
 
   #[test]
   fn test_load_wasm() {
-    let engine = Engine::default();
+    let mut config = wasmtime::Config::new();
+    config.wasm_component_model(true);
+    config.async_support(true);
+    let engine = Engine::new(&config).unwrap();
     let path = "test/plugin/build/wasm/cosmox_plugin_example.wasm";
     let _wasm_component = load_wasm(0, path, &engine).unwrap();
   }

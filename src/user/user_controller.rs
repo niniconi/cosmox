@@ -169,7 +169,7 @@ pub async fn sign_up(
         Err(err) => {
           if let Some(sqlerr) = err.sql_err()
             && let SqlErr::UniqueConstraintViolation(message) = sqlerr
-            && message.contains("username")
+            && message.contains("username") // TODO check field
           {
             Err(UserError::IdentTaken(body.username.clone()))
           } else {

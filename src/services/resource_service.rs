@@ -1,5 +1,7 @@
 use std::{str::FromStr, sync::Arc};
 
+use chrono::Utc;
+use cosmox_api::metadata::Metadata;
 use futures::future::try_join_all;
 use sea_orm::{
   ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait, Iden, PaginatorTrait,
@@ -35,6 +37,30 @@ pub async fn get_resource(
 pub async fn add_resource(db: Arc<DatabaseConnection>) -> Result<(), ResourceError> {
   todo!()
 }
+pub async fn add_resource_by_metadata(
+  lid: u64,
+  metadata: &Metadata<()>,
+  metadata_path: String,
+  db: Arc<DatabaseConnection>,
+) -> Result<u64, ResourceError> {
+  let current_datetime = Utc::now().naive_utc();
+  let resource = resources::ActiveModel {
+    name: Set(Some(metadata.name.clone())),
+    description: Set(Some(metadata.description.clone())),
+    create_datetime: Set(current_datetime),
+    last_update_datetime: Set(current_datetime),
+    lid: Set(Some(lid)),
+    metadata_parent_path: Set(Some(metadata_path)),
+    ..Default::default()
+  };
+
+  let resource = resource
+    .insert(db.as_ref())
+    .await
+    .inspect_err(|err| log::error!("{err}"))
+    .map_err(|_err| ResourceError::InternalError("Database error".to_string()))?;
+  Ok(resource.rid)
+}
 
 /// delete resource from database
 pub async fn delete_resource(rid: u64, db: Arc<DatabaseConnection>) -> Result<(), ResourceError> {
@@ -58,26 +84,28 @@ pub async fn add_tags_for_resource(
     .clone()
     .transaction::<_, Vec<resources_related_tags::Model>, ResourceError>(|_txn| {
       Box::pin(async move {
-        let add_tag_futures = tags
+        let resource_tag_relations = tags
           .iter()
-          .map(|tid| async {
-            let resource_tag_relation = resources_related_tags::ActiveModel {
-              rid: Set(rid),
-              tid: Set(*tid),
-              ..Default::default()
-            };
-            resource_tag_relation.insert(db.as_ref()).await
+          .map(|tid| resources_related_tags::ActiveModel {
+            rid: Set(rid),
+            tid: Set(*tid),
+            ..Default::default()
           })
           .collect::<Vec<_>>();
 
-        try_join_all(add_tag_futures)
+        resources_related_tags::Entity::insert_many(resource_tag_relations)
+          .exec(db.as_ref())
           .await
           .inspect_err(|err| log::error!("{err}"))
           .map_err(|_err| ResourceError::InternalError("Database error".to_string()))
+          .map(|_| vec![]) // TODO solve return models
       })
     })
     .await;
-  let result = result.map_err(|err| todo!())?;
+
+  let result = result
+    .inspect_err(|err| log::error!("{err}"))
+    .map_err(|_err| ResourceError::InternalError("Database error".to_string()))?;
   Ok(result)
 }
 
@@ -109,6 +137,6 @@ pub async fn query_resources(
 
   match paginator.fetch_page(page).await {
     Ok(result) => Ok((result, pagination)),
-    Err(err) => Err(ResourceError::InternalError("Database error".to_string())),
+    Err(_err) => Err(ResourceError::InternalError("Database error".to_string())),
   }
 }

@@ -1,16 +1,14 @@
 use std::sync::Arc;
 
 use actix_web::http::{Method, header::HeaderValue};
-use cosmox_macros::ActixWebError;
-use futures::TryFutureExt;
 use sea_orm::{
-  ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityOrSelect, EntityTrait,
+  ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
   JoinType, QueryFilter, QuerySelect, RelationTrait,
 };
 
 use crate::{
   entities::{
-    permissions, prelude::UsersRelatedRoles, roles, roles_related_permissions, users_related_roles,
+    permissions, roles, roles_related_permissions, users_related_roles,
   },
   user::{
     acl_controller::{AclError, PermissionAddRequest, RoleAddRequest},

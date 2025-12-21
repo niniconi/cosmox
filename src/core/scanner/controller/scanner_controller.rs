@@ -3,7 +3,7 @@ use std::sync::{LazyLock, RwLock};
 use actix_web::{HttpResponse, Responder, get, http::StatusCode, post, web};
 
 use cosmox_macros::{ActixWebError, auto_webapi_doc};
-use futures::FutureExt;
+use futures::{FutureExt, future::join_all};
 use sea_orm::DatabaseConnection;
 
 use crate::{
@@ -68,57 +68,60 @@ pub async fn scan(
   lid: web::Path<u64>,
   db: web::Data<DatabaseConnection>,
 ) -> Result<impl Responder, ScannerError> {
-  // let _ = web::block(async move || {
+  let db = db.into_inner();
   let context = scanner_manager::prepare_context_information(
     scanner_manager::SelectedLibraries::SINGLE(*lid),
-    db.into_inner(),
+    db.clone(),
   )
   .await;
 
   match context {
     Ok(contexts) => {
       if let Some(context) = contexts.first() {
-        log::debug!("start scanner by context {context:#?}");
-        let _ = start_scanner(context.clone()).await;
+        log::info!("created scan task by context {context:#?}");
+        let _ = start_scanner(context.clone(), db.clone()).await;
       } else {
         *SCANNER_STATE.write().unwrap() = ScannerStatus::Err(ScannerError::NotFound(*lid))
       }
     }
     Err(scanner_error) => *SCANNER_STATE.write().unwrap() = ScannerStatus::Err(scanner_error),
   }
-  // })
-  // .await
-  // .unwrap();
 
-  Ok(HttpResponse::Ok().json(Message::ok(Some("start"))))
+  Ok(HttpResponse::Ok().json(Message::ok(Some("complete"))))
 }
 
 /// Scan all libraries
-/// TODO web::block can't not run as expected.
 #[auto_webapi_doc]
 #[get("scan/all")]
 pub async fn scan_all(db: web::Data<DatabaseConnection>) -> Result<impl Responder, ScannerError> {
-  web::block(async || {
-    let context = scanner_manager::prepare_context_information(
-      scanner_manager::SelectedLibraries::ALL,
-      db.into_inner(),
-    )
-    .await;
+  let db = db.into_inner();
+  let context = scanner_manager::prepare_context_information(
+    scanner_manager::SelectedLibraries::ALL,
+    db.clone(),
+  )
+  .await;
 
-    match context {
-      Ok(contexts) => {
-        for context in contexts {
-          log::debug!("start scanner by context {context:#?}");
-          start_scanner(context.clone());
-        }
+  match context {
+    Ok(contexts) => {
+      for context in contexts {
+        log::info!("created scan task by context {context:#?}");
+        start_scanner(context.clone(), db.clone()).await;
       }
-      Err(scanner_error) => *SCANNER_STATE.write().unwrap() = ScannerStatus::Err(scanner_error),
+      /* // TODO solve dead lock
+      let start_scanner_tasks = contexts
+        .iter()
+        .map(|context| {
+          log::info!("created scan task by context {context:#?}");
+          start_scanner(context.clone(), db.clone())
+        })
+        .collect::<Vec<_>>();
+      join_all(start_scanner_tasks).await;
+      */
     }
-  })
-  .await
-  .unwrap();
+    Err(scanner_error) => *SCANNER_STATE.write().unwrap() = ScannerStatus::Err(scanner_error),
+  }
 
-  Ok(HttpResponse::Ok().json(Message::ok(Some("start"))))
+  Ok(HttpResponse::Ok().json(Message::ok(Some("complete"))))
 }
 
 #[auto_webapi_doc]

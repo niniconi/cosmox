@@ -106,6 +106,7 @@ impl Pagination {
 #[macro_export]
 macro_rules! into_message {
   ($result:expr) => {
+    // let result:Result<_,_> = $result;
     match $result {
       Ok(data) => Ok(HttpResponse::Ok().json($crate::utils::message::Message::ok(Some(data)))),
       Err(err) => Err(err),

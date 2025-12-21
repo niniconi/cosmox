@@ -1,15 +1,56 @@
 use std::{str::FromStr, sync::Arc};
 
-use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder};
+use chrono::Utc;
+use sea_orm::{
+  ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
+  QueryFilter, QueryOrder, SqlErr,
+};
 
 use crate::{
   controller::tag_controller::{TagError, TagQueryRequest},
-  entities::tags,
+  entities::{tag_groups, tags},
   utils::message::Pagination,
 };
 
-pub async fn get_tag_group(_tgid: u64, _db: Arc<DatabaseConnection>) {
-  todo!()
+pub async fn add_tag_group(label: String, db: Arc<DatabaseConnection>) -> Result<u64, TagError> {
+  let current_navie_datetime = Utc::now().naive_utc();
+  let tag_group = tag_groups::ActiveModel {
+    text: Set(label.clone()),
+    create_datetime: Set(current_navie_datetime),
+    ..Default::default()
+  };
+  let tag_group = tag_group.insert(db.as_ref()).await.map_err(|err| {
+    if let Some(sql_err) = err.sql_err()
+      && let SqlErr::UniqueConstraintViolation(message) = sql_err
+    // TODO check field
+    {
+      TagError::AlreadyExists(format!("group {label}"))
+    } else {
+      log::error!("{err}");
+      TagError::InternalError("Database error".to_string())
+    }
+  })?;
+  Ok(tag_group.tgid)
+}
+
+pub async fn get_tag_group(
+  tgid: u64,
+  db: Arc<DatabaseConnection>,
+) -> Result<tag_groups::Model, TagError> {
+  todo!();
+}
+pub async fn get_tag_group_by_label(
+  label: String,
+  db: Arc<DatabaseConnection>,
+) -> Result<Option<tag_groups::Model>, TagError> {
+  let tag_group = tag_groups::Entity::find()
+    .filter(tag_groups::Column::Text.eq(label))
+    .one(db.as_ref())
+    .await
+    .inspect_err(|err| log::error!("{err}"))
+    .map_err(|_| TagError::InternalError("Database error".to_string()))?;
+
+  Ok(tag_group)
 }
 
 pub async fn get_tag(tid: u64, db: Arc<DatabaseConnection>) -> Result<tags::Model, TagError> {
@@ -25,14 +66,43 @@ pub async fn get_tag(tid: u64, db: Arc<DatabaseConnection>) -> Result<tags::Mode
   }
 }
 
-pub async fn add_tag(tag: tags::Model, db: Arc<DatabaseConnection>) -> Result<(), TagError> {
-  let tag = tags::ActiveModel::from(tag);
-  let tag = tag
-    .insert(db.as_ref())
+pub async fn get_tag_by_label(
+  label: String,
+  db: Arc<DatabaseConnection>,
+) -> Result<Option<tags::Model>, TagError> {
+  let tag = tags::Entity::find()
+    .filter(tags::Column::Text.eq(label))
+    .one(db.as_ref())
     .await
     .inspect_err(|err| log::error!("{err}"))
-    .map_err(|_err| TagError::InternalError("Database error".to_string()))?;
-  Ok(())
+    .map_err(|_| TagError::InternalError("Database error".to_string()))?;
+  Ok(tag)
+}
+
+pub async fn add_tag(
+  label: String,
+  tgid: u64,
+  db: Arc<DatabaseConnection>,
+) -> Result<u64, TagError> {
+  let current_navie_datetime = Utc::now().naive_utc();
+  let tag = tags::ActiveModel {
+    text: Set(label.clone()),
+    tgid: Set(tgid),
+    create_datetime: Set(current_navie_datetime),
+    ..Default::default()
+  };
+  let tag = tag.insert(db.as_ref()).await.map_err(|err| {
+    if let Some(sql_err) = err.sql_err()
+      && let SqlErr::UniqueConstraintViolation(message) = sql_err
+    // TODO check field
+    {
+      TagError::AlreadyExists(format!("{tgid}:{label}"))
+    } else {
+      log::error!("{err}");
+      TagError::InternalError("Database error".to_string())
+    }
+  })?;
+  Ok(tag.tid)
 }
 
 pub async fn delete_tag(tid: u64, db: Arc<DatabaseConnection>) -> Result<(), TagError> {

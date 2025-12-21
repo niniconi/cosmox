@@ -2,17 +2,14 @@
 #![allow(clippy::redundant_field_names)]
 
 use core::io::file_controller;
-use std::env;
+use std::{env, time::Duration};
 
-use actix_web::{
-  App, HttpServer,
-  web::{self, service},
-};
+use actix_web::{App, HttpServer, web};
 use configuration::Configuration;
 use controller::{
   library_controller, resource_controller, system_controller, tag_controller, ui_controller,
 };
-use sea_orm::{Database, DatabaseConnection};
+use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use user::user_controller;
@@ -25,7 +22,7 @@ use core::{
 };
 
 use crate::{
-  core::plugin::plugin_manager::PluginManager,
+  core::{plugin::plugin_manager::PluginManager, scanner::controller::metadata_controller},
   user::{
     acl_controller,
     security::{auth_middleware::TokenAuth, policy_service::PolicyService},
@@ -92,6 +89,8 @@ pub mod utils;
   plugin_controller::enable_plugin,
   plugin_controller::disable_plugin,
   plugin_controller::info,
+  metadata_controller::query,
+  metadata_controller::get,
   ui_controller::get_core,
 ))]
 struct ApiDoc;
@@ -129,13 +128,24 @@ async fn main() -> std::io::Result<()> {
     config.database.port,
     config.database.database
   );
-  let db_connection: DatabaseConnection = Database::connect(&database_url).await.unwrap();
+
+  let mut database_opt = ConnectOptions::new(database_url);
+
+  database_opt
+    .max_connections(100)
+    .min_connections(8)
+    .connect_timeout(Duration::from_secs(8))
+    .acquire_timeout(Duration::from_secs(8))
+    .idle_timeout(Duration::from_secs(10))
+    .max_lifetime(Duration::from_secs(30 * 60));
+
+  let db_connection: DatabaseConnection = Database::connect(database_opt).await.unwrap();
   let db_connection_app_data = web::Data::new(db_connection);
   let server_host = config.server.host.as_ref();
   let server_port = config.server.port;
   let config_app_data = web::Data::new(config);
 
-  PluginManager::start();
+  PluginManager::start().await;
 
   let policy_service = web::Data::new(PolicyService {});
 
@@ -214,8 +224,8 @@ async fn main() -> std::io::Result<()> {
           )
           .service(
             web::scope("scanner")
-              .service(scanner_controller::scan)
               .service(scanner_controller::scan_all)
+              .service(scanner_controller::scan)
               .service(scanner_controller::processed)
               .service(scanner_controller::add_task)
               .service(scanner_controller::info)
@@ -228,6 +238,11 @@ async fn main() -> std::io::Result<()> {
               .service(plugin_controller::enable_plugin)
               .service(plugin_controller::disable_plugin)
               .service(plugin_controller::info),
+          )
+          .service(
+            web::scope("metadata")
+              .service(metadata_controller::query)
+              .service(metadata_controller::get),
           )
           .service(web::scope("ui").service(ui_controller::get_core)),
       )

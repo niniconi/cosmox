@@ -1,4 +1,4 @@
-use actix_web::{HttpResponse, Responder, delete, get, http::StatusCode, post, web};
+use actix_web::{HttpResponse, Responder, delete, get, post, web};
 use cosmox_macros::{ActixWebError, auto_webapi_doc, page_helper};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

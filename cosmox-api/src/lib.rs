@@ -1,9 +1,5 @@
-use std::sync::Arc;
-
 use anyhow::{Result, anyhow};
 use bincode::{self, Decode, Encode};
-
-use crate::metadata::Metadata;
 
 pub mod api;
 pub mod metadata;
@@ -13,8 +9,9 @@ pub mod metadata;
 /// This enum covers a wide range of events, including user authentication, media file management, playback,
 /// interaction, and various system-level occurrences.
 #[derive(Debug, Encode, Decode)]
-pub enum Event<T = ()> {
-  OnMetadataTreeReady(EventPayload<String, Arc<Metadata<T>>>),
+pub enum Event {
+  OnMetadataRawTreeReady(EventPayload<String, ()>),
+  OnMetadataLocalTreeReady(EventPayload<String, ()>),
 
   OnScanComplete(EventPayload<(), ()>),
   OnNewFileDiscovered(EventPayload<(), ()>),
@@ -66,7 +63,7 @@ mod tests {
 
   #[test]
   fn event_decode_and_encode() {
-    let event: Event<()> = Event::OnServerStart(EventPayload::Data(()));
+    let event: Event = Event::OnServerStart(EventPayload::Data(()));
     let data = event.encode().unwrap();
     let event_decode = Event::decode(data).unwrap();
     assert_eq!(event, event_decode)

@@ -1,4 +1,5 @@
 use wasmtime::Store;
+use wasmtime::component::Accessor;
 
 use super::plugin_loader::bindings::cosmox::plugin::cosmox_api as bindings_cosmox_api;
 use super::plugin_loader::bindings::cosmox::plugin::cosmox_types as bindings_cosmox_types;
@@ -7,12 +8,16 @@ use crate::core::plugin::{
   plugin_manager::PluginManager,
 };
 
-pub fn plugin_wasm_lifecycle(store: &mut Store<ComponentRunStates>, instance: PluginHostWorld) {
+pub async fn plugin_wasm_lifecycle(
+  store: &mut Store<ComponentRunStates>,
+  instance: PluginHostWorld,
+) {
   log::debug!("lifecycle............................");
 
   let supported_media_types = instance
     .cosmox_plugin_configuration_manager()
     .call_supported_media_types(&mut *store)
+    .await
     .unwrap_or_default();
   if let Err(err) = PluginManager::push_media_types(supported_media_types) {
     log::error!("{err:?}");
@@ -29,7 +34,7 @@ pub fn plugin_wasm_lifecycle(store: &mut Store<ComponentRunStates>, instance: Pl
         settings: String::default(),
       },
     )
-    .unwrap();
+    .await;
 
   log::debug!("end..................................")
 }

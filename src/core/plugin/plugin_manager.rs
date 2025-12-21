@@ -4,14 +4,17 @@ use std::{
   sync::{Arc, LazyLock, Mutex},
 };
 
-use ffmpeg_next::ffi::printf;
+use anyhow::{Result, anyhow};
 use futures::stream::Collect;
 use lru::LruCache;
 use regex::Regex;
 use sea_orm::sea_query::IdenList;
+use tokio::task::LocalSet;
 use wasmtime::component::ResourceTable;
 use wasmtime::{Engine, Store};
+use wasmtime_wasi_http::WasiHttpCtx;
 
+use super::plugin_loader::bindings::cosmox::plugin::context as bindings_context;
 use super::plugin_loader::bindings::cosmox::plugin::cosmox_types as bindings_cosmox_types;
 
 use crate::{
@@ -20,13 +23,14 @@ use crate::{
     Plugin, WasmComponent,
     plugin_lifecycle::plugin_wasm_lifecycle,
     plugin_loader::{
-      ComponentRunStates, CosmoxPluginData, bindings, load_builtin_plugins, load_external_plugins,
+      ComponentRunStates, CosmoxPluginData,
+      bindings,
+      load_builtin_plugins, load_external_plugins,
     },
   },
   utils::default_constants::ascii_letters_number_separators,
 };
 
-// use tokio::sync::{Mutex, mpsc};
 use wasmtime_wasi::WasiCtxBuilder;
 
 #[derive(Default, Debug, Clone)]
@@ -54,20 +58,29 @@ pub struct PluginManager {
   pub supported_media_types: HashSet<String>,
 }
 
-// --- `thread_local!` Store management ---
-// Each Tokio blocking thread will have its own copy of the Store.
-thread_local! {
-  static WASM_STORE_AND_STATE: LazyLock<RefCell<LruCache<u64, Store<ComponentRunStates>>>> = LazyLock::new(|| {
-    log::info!("[Thread {:?}] Initializing LRU Cache for Stores. Thread ID: {:?}",
-      std::thread::current().id(), std::thread::current().id());
-    // Sets the maximum capacity of the LRU cache. For example, each thread retains a maximum of 10 Store instances.
-    // If you need more Store instances to be active simultaneously on the same thread, you can adjust this number.
-    RefCell::new(LruCache::new(std::num::NonZeroUsize::new(10).unwrap()))
-  });
-}
+static SHARE: LazyLock<Mutex<LruCache<u64, Store<ComponentRunStates>>>> = LazyLock::new(|| {
+  log::info!(
+    "[Thread {:?}] Initializing LRU Cache for Stores. Thread ID: {:?}",
+    std::thread::current().id(),
+    std::thread::current().id()
+  );
+  // Sets the maximum capacity of the LRU cache. For example, each thread retains a maximum of 10 Store instances.
+  // If you need more Store instances to be active simultaneously on the same thread, you can adjust this number.
+  Mutex::new(LruCache::new(std::num::NonZeroUsize::new(10).unwrap()))
+});
 
-static PLUGIN_MANAGER: LazyLock<Mutex<PluginManager>> =
-  LazyLock::new(|| Mutex::new(PluginManager::default()));
+static PLUGIN_MANAGER: LazyLock<Mutex<PluginManager>> = LazyLock::new(|| {
+  let mut config = wasmtime::Config::new();
+  config.wasm_component_model(true);
+  config.async_support(true);
+
+  let engine = Arc::new(Engine::new(&config).unwrap());
+
+  Mutex::new(PluginManager {
+    engine: engine,
+    ..Default::default()
+  })
+});
 
 /// Plugin manager
 impl PluginManager {
@@ -108,7 +121,7 @@ impl PluginManager {
     self.wasm_autoincrement
   }
 
-  pub fn start() {
+  pub async fn start() {
     {
       let plugin_path = &Configuration::get_global_configuration().cosmox.plugin.path;
 
@@ -123,7 +136,13 @@ impl PluginManager {
     } // Leaving the life cycle of `plugin_manager`
 
     // The lock of `plugin_manager` has been released
-    PluginManager::lifecycle_manager();
+    // PluginManager::lifecycle_manager();
+    // let local_set = LocalSet::new();
+    // let fut = local_set
+    //   .run_until(async {
+    // tokio::task::spawn_local(PluginManager::lifecycle_manager()).await
+    // });
+    PluginManager::lifecycle_manager().await
   }
 
   fn _start(&mut self, builtin_plugins: Vec<Plugin>, external_plugins: Vec<Plugin>) {
@@ -137,7 +156,28 @@ impl PluginManager {
     }
   }
 
-  fn lifecycle_manager() {
+  fn init_wasm_store_fn(
+    engine: Arc<Engine>,
+    wasm_component: Arc<WasmComponent>,
+  ) -> Store<ComponentRunStates> {
+    // log::trace!("[Thread '{}' (ID: {:?})] Lazily initializing Store for ServiceKey {}. Cache size: {}",
+    // current_thread_name, current_thread_id, task_service_key, cache_size);
+
+    let wasi = WasiCtxBuilder::new().inherit_stdio().inherit_args().build();
+    let state = ComponentRunStates {
+      wasi_ctx: wasi,
+      wasi_http_ctx: WasiHttpCtx::new(),
+      resource_table: ResourceTable::new(),
+      plugin_data: CosmoxPluginData {
+        bind_events: Mutex::new(Vec::with_capacity(32)),
+        plugin_id: wasm_component.plugin_id,
+        wasm_id: wasm_component.id,
+        name: wasm_component.name.clone()
+      },
+    };
+    Store::new(&engine, state)
+  }
+  async fn lifecycle_manager() {
     let (engine, wasm_list) = {
       let plugin_manager = PLUGIN_MANAGER.lock().unwrap();
       let wasm_list = plugin_manager.wasm_list.clone();
@@ -145,40 +185,42 @@ impl PluginManager {
       (engine, wasm_list)
     };
 
+    log::debug!("engine config = {:#?}", engine.config());
+
     for (wasm_id, wasm_component) in wasm_list.iter() {
       log::debug!(
         "start lifetime manager for wasm ID:{wasm_id}, wasm_component:{wasm_component:#?}"
       );
-      WASM_STORE_AND_STATE.with(|cache_ref_cell| {
-        let mut cache = cache_ref_cell.borrow_mut();
-        let cache_size = cache.len();
-        let store_mut_ref = cache.get_or_insert_mut(*wasm_id, || {
-          // log::trace!("[Thread '{}' (ID: {:?})] Lazily initializing Store for ServiceKey {}. Cache size: {}",
-          // current_thread_name, current_thread_id, task_service_key, cache_size);
+      let mut wasm_store_caches_lock = SHARE.lock().unwrap();
 
-          let wasi = WasiCtxBuilder::new().inherit_stdio().inherit_args().build();
-          let state = ComponentRunStates {
-            wasi_ctx: wasi,
-            resource_table: ResourceTable::new(),
-            plugin_data: CosmoxPluginData {
-              bind_events: Mutex::new(Vec::with_capacity(32)),
-              plugin_id: wasm_component.plugin_id,
-              wasm_id: wasm_component.id,
-            },
-          };
+      let store_mut_ref = wasm_store_caches_lock.get_or_insert_mut(*wasm_id, || {
+        // log::trace!("[Thread '{}' (ID: {:?})] Lazily initializing Store for ServiceKey {}. Cache size: {}",
+        // current_thread_name, current_thread_id, task_service_key, cache_size);
 
-          Store::new(&engine, state)
-        });
+        let wasi = WasiCtxBuilder::new().inherit_stdio().inherit_args().build();
+        let state = ComponentRunStates {
+          wasi_ctx: wasi,
+          wasi_http_ctx: WasiHttpCtx::new(),
+          resource_table: ResourceTable::new(),
+          plugin_data: CosmoxPluginData {
+            bind_events: Mutex::new(Vec::with_capacity(32)),
+            plugin_id: wasm_component.plugin_id,
+            wasm_id: wasm_component.id,
+            name: wasm_component.name.clone()
+          },
+        };
+        Store::new(&engine, state)
+      });
 
-        let instance = bindings::PluginHostWorld::instantiate(
-          &mut *store_mut_ref,
-          &wasm_component.compoent,
-          &wasm_component.linker,
-        )
-        .unwrap();
+      let instance = bindings::PluginHostWorld::instantiate_async(
+        &mut *store_mut_ref,
+        &wasm_component.compoent,
+        &wasm_component.linker,
+      )
+      .await
+      .unwrap();
 
-        plugin_wasm_lifecycle(store_mut_ref, instance);
-      })
+      plugin_wasm_lifecycle(store_mut_ref, instance).await;
     }
   }
 
@@ -204,7 +246,10 @@ impl PluginManager {
   pub fn event_dispatcher() {}
 
   /// Notify event
-  pub async fn notify_all(event: Arc<cosmox_api::Event>) {
+  pub async fn notify_all<F>(event: Arc<cosmox_api::Event>, event_context_provider: F) -> Result<()>
+  where
+    F: Fn(&mut Store<ComponentRunStates>) -> bindings_context::EventContext,
+  {
     log::debug!("notify all message by event{event:?}");
     let current_task_name = "notify event";
 
@@ -216,80 +261,80 @@ impl PluginManager {
         .get(&event.into_key())
       {
         Some(event_map_to_wasm_components) => event_map_to_wasm_components.clone(),
-        None => return,
+        None => return Err(anyhow!("Not found any event listeners")),
       };
       (components_for_current_event, engine)
     };
 
     let payload = match event.encode() {
       Ok(payload) => payload,
-      Err(_) => return,
+      Err(err) => return Err(anyhow!("Event encode error by {err}")),
     };
 
-    let mut join_handles = Vec::with_capacity(components_for_current_event.len());
-    for current_wasm_compoent in components_for_current_event {
-      let current_wasm_compoent = current_wasm_compoent.clone();
+    // let mut join_handles = Vec::with_capacity(components_for_current_event.len());
+    for current_wasm_compoent in &components_for_current_event {
+      // let current_wasm_compoent = current_wasm_compoent.clone();
       let task_service_key = current_wasm_compoent.id;
       let payload = payload.clone();
       let engine = engine.clone();
 
-      let handle = tokio::task::spawn_blocking(move || {
-        let payload = payload;
-        let current_thread = std::thread::current();
-        let current_thread_id = current_thread.id();
-        let current_thread_name = current_thread.name().unwrap_or("unnamed");
-        log::info!(
-          "[Host] Task '{}' (Service {}) dispatched to thread '{}' (ID: {:?}).",
-          current_task_name,
-          task_service_key,
-          current_thread_name,
-          current_thread_id
-        );
+      // let handle = tokio::task::spawn_blocking(move || {
+      // let payload = payload;
+      let current_thread = std::thread::current();
+      let current_thread_id = current_thread.id();
+      let current_thread_name = current_thread.name().unwrap_or("unnamed");
+      log::info!(
+        "[Host] Task '{}' (Service {}) dispatched to thread '{}' (ID: {:?}).",
+        current_task_name,
+        task_service_key,
+        current_thread_name,
+        current_thread_id
+      );
 
-        WASM_STORE_AND_STATE.with(|cache_ref_cell| {
-            let mut cache = cache_ref_cell.borrow_mut();
-            let cache_size = cache.len();
-
-            let store_mut_ref = cache.get_or_insert_mut(task_service_key, || {
-                log::trace!("[Thread '{}' (ID: {:?})] Lazily initializing Store for ServiceKey {}. Cache size: {}",
-                current_thread_name, current_thread_id, task_service_key, cache_size);
-
-                let wasi = WasiCtxBuilder::new().inherit_stdio().inherit_args().build();
-                let state = ComponentRunStates {
-                    wasi_ctx: wasi,
-                    resource_table: ResourceTable::new(),
-                    plugin_data:  CosmoxPluginData{
-                        bind_events: Mutex::new(Vec::with_capacity(32)),
-                        plugin_id: current_wasm_compoent.plugin_id,
-                        wasm_id: current_wasm_compoent.id,
-                    },
-                };
-
-                Store::new(&engine, state)
-            });
-
-            let instance = bindings::PluginHostWorld::instantiate(&mut *store_mut_ref,&current_wasm_compoent.compoent, &current_wasm_compoent.linker).unwrap();
-
-
-            log::debug!("call on_event wasm = {current_wasm_compoent:?}");
-            let result = instance.cosmox_plugin_host_notifier().call_on_event(store_mut_ref, payload.clone().as_slice());
-
-            match result {
-                Ok(plugin_result) =>  {
-                    log::info!("[Host] Wasm Task '{}' (Service {}) completed on thread '{}' (ID: {:?}). Result: {:?}. Current cache size: {}",
-                    current_task_name, task_service_key, current_thread_name, current_thread_id, plugin_result, cache.len());
-
-                }
-                Err(err) => {log::error!("{err}")}
-            }
-        });
+      log::warn!("get lock state is {}", SHARE.try_lock().is_ok());
+      let mut wasm_store_caches = SHARE.lock().unwrap();
+      let store_mut_ref = wasm_store_caches.get_or_insert_mut(task_service_key, || {
+        PluginManager::init_wasm_store_fn(engine, current_wasm_compoent.clone())
       });
-      join_handles.push(handle);
-    }
 
-    for handle in join_handles {
-      let _ = handle.await;
+      let instance = bindings::PluginHostWorld::instantiate_async(
+        &mut *store_mut_ref,
+        &current_wasm_compoent.compoent,
+        &current_wasm_compoent.linker,
+      )
+      .await
+      .unwrap();
+      log::debug!("call on_event wasm = {current_wasm_compoent:?}");
+
+      let event_context = event_context_provider(store_mut_ref);
+      let result = instance
+        .cosmox_plugin_host_notifier()
+        .call_on_event(&mut *store_mut_ref, payload.as_slice(), event_context)
+        .await;
+
+      // let result = instance
+      // .cosmox_plugin_host_notifier()
+      // .call_on_event(store_mut_ref, payload.clone().as_slice())
+      // .await;
+
+      match result {
+        Ok(plugin_result) => {
+          log::info!(
+            "[Host] Wasm Task '{}' (Service {}) completed on thread '{}' (ID: {:?}). Result: {:?}. Current cache size: {}",
+            current_task_name,
+            task_service_key,
+            current_thread_name,
+            current_thread_id,
+            plugin_result,
+            wasm_store_caches.len()
+          );
+        }
+        Err(err) => {
+          log::error!("{err}")
+        }
+      }
     }
+    Ok(())
   }
 
   #[inline]

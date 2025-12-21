@@ -1,9 +1,7 @@
-use std::sync::Arc;
-
 use actix_web::{HttpResponse, Responder, delete, get, post, web};
 
 use cosmox_macros::{ActixWebError, auto_webapi_doc, page_helper};
-use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 

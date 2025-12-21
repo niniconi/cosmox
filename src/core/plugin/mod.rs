@@ -9,6 +9,7 @@ pub mod plugin_controller;
 pub mod plugin_lifecycle;
 pub mod plugin_loader;
 pub mod plugin_manager;
+pub mod context;
 
 #[derive(Debug, Clone)]
 pub enum Plugin {
@@ -41,6 +42,7 @@ impl Plugin {
 
 pub struct WasmComponent {
   pub id: u64,
+  pub name: String,
   pub plugin_id: u64,
   pub path: PathBuf,
   pub compoent: Component,

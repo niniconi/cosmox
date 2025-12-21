@@ -8,8 +8,9 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
   #[sea_orm(primary_key)]
   pub tgid: u64,
-  pub text: Option<String>,
-  pub create_datetime: Option<DateTime>,
+  #[sea_orm(unique)]
+  pub text: String,
+  pub create_datetime: DateTime,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
