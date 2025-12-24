@@ -7,8 +7,10 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::{
-  entities::types, into_message, into_message_page, services::librarys_service,
-  utils::message::Message,
+  entities::types,
+  into_message, into_message_page,
+  services::librarys_service,
+  utils::message::{Message, MessagePayload},
 };
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -93,19 +95,13 @@ pub async fn add(
   body: web::Json<LibraryAddRequest>,
   db: web::Data<DatabaseConnection>,
 ) -> impl Responder {
-  let result = librarys_service::create_library_with_tags_and_paths(
-    Arc::new(body.into_inner()),
-    db.into_inner(),
+  into_message!(
+    librarys_service::create_library_with_tags_and_paths(
+      Arc::new(body.into_inner()),
+      db.into_inner(),
+    )
+    .await
   )
-  .await;
-
-  match result {
-    Ok(library) => HttpResponse::Ok().json(Message::ok(Some(library))),
-    Err(err) => {
-      log::error!("{err}");
-      HttpResponse::Ok().body("")
-    }
-  }
 }
 
 /// delete library
@@ -123,7 +119,10 @@ pub async fn delete() -> impl Responder {
 #[get("type/all")]
 pub async fn get_all_type(db: web::Data<DatabaseConnection>) -> impl Responder {
   match types::Entity::find().all(db.as_ref()).await {
-    Ok(types) => HttpResponse::Ok().json(Message::ok(Some(types))),
+    Ok(types) => HttpResponse::Ok().json(Message {
+      payload: Some(MessagePayload::Data(Some(types))),
+      ..Default::default()
+    }),
     Err(_err) => {
       todo!()
     }

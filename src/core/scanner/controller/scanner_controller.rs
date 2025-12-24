@@ -8,6 +8,7 @@ use sea_orm::DatabaseConnection;
 
 use crate::{
   core::scanner::scanner_manager::{self, start_scanner},
+  into_message,
   utils::message::Message,
 };
 
@@ -87,7 +88,7 @@ pub async fn scan(
     Err(scanner_error) => *SCANNER_STATE.write().unwrap() = ScannerStatus::Err(scanner_error),
   }
 
-  Ok(HttpResponse::Ok().json(Message::ok(Some("complete"))))
+  into_message!(Ok("complete"))
 }
 
 /// Scan all libraries
@@ -121,7 +122,7 @@ pub async fn scan_all(db: web::Data<DatabaseConnection>) -> Result<impl Responde
     Err(scanner_error) => *SCANNER_STATE.write().unwrap() = ScannerStatus::Err(scanner_error),
   }
 
-  Ok(HttpResponse::Ok().json(Message::ok(Some("complete"))))
+  into_message!(Ok("complete"))
 }
 
 #[auto_webapi_doc]

@@ -16,6 +16,7 @@ use utoipa::{IntoParams, ToSchema};
 use super::security::auth;
 use crate::into_message;
 use crate::utils::default_constants::default_page_size;
+use crate::utils::message::Pagination;
 use crate::{entities::users, utils::message::Message};
 use validator::{Validate, ValidationErrorsKind};
 
@@ -164,7 +165,7 @@ pub async fn sign_up(
             username: user.username,
             email: user.email,
           };
-          Ok(HttpResponse::Ok().json(Message::ok(Some(user_resp))))
+          into_message!(Ok(user_resp))
         }
         Err(err) => {
           if let Some(sqlerr) = err.sql_err()
@@ -222,12 +223,13 @@ pub async fn query(
 
   let paginator = select.paginate(db.as_ref(), params.page_size);
   let result = paginator.fetch_page(page).await.unwrap();
-  HttpResponse::Ok().json(Message::ok(Some(result)).page(
+  let pagination = Pagination::new(
     paginator.num_items().await.unwrap(),
     params.page_size,
     paginator.cur_page(),
     "",
-  ))
+  );
+  into_message!(Ok::<_, UserError>(result), pagination = Some(pagination))
 }
 
 /// get user
@@ -245,7 +247,7 @@ pub async fn get(
     .unwrap();
   if let Some(mut user) = user {
     user.password = String::from("hidden");
-    Ok(HttpResponse::Ok().json(Message::ok(Some(user))))
+    into_message!(Ok(user))
   } else {
     Err(UserError::NotFound(uid.into_inner()))
   }

@@ -48,14 +48,14 @@ pub fn expand_derive_actix_web_error(input: DeriveInput) -> syn::Result<TokenStr
   for variant in enum_data.variants {
     let variant_name = &variant.ident;
 
-    let status_code =
+    let (status_code, raw_status_code) =
       if let Some(status_code) = &variant.attrs.iter().find(|x| x.path().is_ident("code")) {
         if let Ok(syn::Lit::Int(lit_int)) = &status_code.parse_args::<syn::Lit>()
           && let Ok(num) = lit_int.base10_parse::<u16>()
         {
-          quote! {
+          (quote! {
              actix_web::http::StatusCode::from_u16(#num).unwrap()
-          }
+          }, num)
         } else {
           return Err(syn::Error::new_spanned(
             variant.to_token_stream(),
@@ -92,7 +92,7 @@ pub fn expand_derive_actix_web_error(input: DeriveInput) -> syn::Result<TokenStr
       Fields::Unit => quote! {
 
         #name::#variant_name => actix_web::HttpResponse::build(self.status_code()).json(crate::utils::message::Message {
-          code : "AAASA".to_string(),
+          code : #raw_status_code.to_string(),
           message : #format_text.to_string(),
           status: status,
           datetime: datetime,
@@ -113,7 +113,7 @@ pub fn expand_derive_actix_web_error(input: DeriveInput) -> syn::Result<TokenStr
 
         quote! {
           #name::#variant_name(#(#bindings),* #dots) => actix_web::HttpResponse::build(self.status_code()).json(crate::utils::message::Message {
-            code : "AAASA".to_string(),
+            code : #raw_status_code.to_string(),
             message : format!(#format_text, #(#bindings),*),
             status: status,
             datetime: datetime,
@@ -137,7 +137,7 @@ pub fn expand_derive_actix_web_error(input: DeriveInput) -> syn::Result<TokenStr
         };
         quote! {
           #name::#variant_name(#(#bindings),* #dots) => actix_web::HttpResponse::build(self.status_code()).json(crate::utils::message::Message {
-            code : "AAASA".to_string(),
+            code : #raw_status_code.to_string(),
             message : format!(#format_text, #(#bindings),*),
             status: status,
             datetime: datetime,

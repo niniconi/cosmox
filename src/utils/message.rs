@@ -1,20 +1,6 @@
 use chrono::{DateTime, Utc};
-// use futures::future::LocalBoxFuture;
-// use futures::future::{ready, LocalBoxFuture, Ready, FutureExt};
-use actix_web::{
-  Error, HttpResponse, Result,
-  body::MessageBody,
-  dev::{Service, ServiceRequest, ServiceResponse, Transform, forward_ready},
-  http::header::ContentType,
-};
-use futures_util::future::FutureExt; // For .boxed_local()
-use futures_util::future::LocalBoxFuture;
 use serde::{Deserialize, Serialize};
-use std::future::{Ready, ready};
-use std::rc::Rc;
-use utoipa::{IntoParams, ToSchema};
-
-use crate::utils::default_constants::default_page_size;
+use utoipa::ToSchema;
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct Message<T> {
@@ -28,42 +14,16 @@ pub struct Message<T> {
   pub pagination: Option<Pagination>,
 }
 
-impl<T> Message<T> {
-  pub fn ok(data: Option<T>) -> Message<T> {
-    match data {
-      Some(data) => Message {
-        code: "Ok".to_string(),
-        message: "".to_string(),
-        status: "".to_string(),
-        datetime: Utc::now(),
-        payload: Some(MessagePayload::Data(data)),
-        pagination: None,
-      },
-      None => Message {
-        code: "Ok".to_string(),
-        message: "".to_string(),
-        status: "".to_string(),
-        datetime: Utc::now(),
-        payload: None,
-        pagination: None,
-      },
+impl<T> Default for Message<T> {
+  fn default() -> Self {
+    Self {
+      code: "200".to_string(),
+      message: "".to_string(),
+      status: "success".to_string(),
+      datetime: Utc::now(),
+      payload: None,
+      pagination: None,
     }
-  }
-
-  pub fn page(
-    &mut self,
-    total_items: u64,
-    page_size: u64,
-    current_page: u64,
-    url_format: &'static str,
-  ) -> &Self {
-    self.pagination = Some(Pagination::new(
-      total_items,
-      page_size,
-      current_page,
-      url_format,
-    ));
-    self
   }
 }
 
@@ -105,11 +65,16 @@ impl Pagination {
 
 #[macro_export]
 macro_rules! into_message {
-  ($result:expr) => {
-    // let result:Result<_,_> = $result;
+  ($result:expr $(,$ident:ident = $value:expr)*) => {
     match $result {
-      Ok(data) => Ok(HttpResponse::Ok().json($crate::utils::message::Message::ok(Some(data)))),
-      Err(err) => Err(err),
+      Ok(data) => {
+        Ok(actix_web::HttpResponse::Ok().json($crate::utils::message::Message {
+          $($ident: $value,)*
+          payload: Some($crate::utils::message::MessagePayload::Data(data)),
+          ..Default::default()
+        }))
+      },
+      Err(err) => Err(err)
     }
   };
 }
@@ -119,9 +84,12 @@ macro_rules! into_message_page {
   ($result:expr) => {
     match $result {
       Ok((data, pagination)) => {
-        let mut message = $crate::utils::message::Message::ok(Some(data));
-        message.pagination = Some(pagination);
-        Ok(HttpResponse::Ok().json(message))
+        let message = $crate::utils::message::Message {
+          pagination: Some(pagination),
+          payload: Some($crate::utils::message::MessagePayload::Data(data)),
+          ..Default::default()
+        };
+        Ok(actix_web::HttpResponse::Ok().json(message))
       }
       Err(err) => Err(err),
     }
