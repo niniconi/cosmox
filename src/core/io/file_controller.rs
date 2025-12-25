@@ -1,12 +1,14 @@
-use actix_web::{HttpRequest, HttpResponse, Responder, get, post, web};
+use actix_web::{
+  HttpRequest, HttpResponse, Responder, get, post,
+  web::{self, Payload},
+};
 use cosmox_macros::{ActixWebError, auto_webapi_doc};
-use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm::DatabaseConnection;
 
 use crate::{
-  core::io::{file_controller, file_service},
-  entities::path_mappings,
+  core::io::file_service::{self, push_item_octet_stream},
+  into_message,
 };
-// use futures::StreamExt;
 
 /// Errors related to file operations (upload, download, management).
 #[derive(Debug, thiserror::Error, ActixWebError)]
@@ -43,9 +45,13 @@ pub enum FileError {
   #[code(500)]
   NotSupportedScheme(String),
 
-  #[error("Disk space exhausted: {0}")]
+  #[error("Not supported Content-Type: {0}")]
+  #[code(500)]
+  NotSupportedContentType(String),
+
+  #[error("Disk space exhausted")]
   #[code(507)]
-  InsufficientStorage(String),
+  InsufficientStorage,
 
   #[error("File operation timed out for '{0}'.")]
   #[code(504)]
@@ -60,8 +66,32 @@ pub enum FileError {
 
 #[auto_webapi_doc]
 #[post("push")]
-pub async fn push() -> impl Responder {
-  HttpResponse::NotImplemented().body("Not implemented push api")
+pub async fn push(
+  request: HttpRequest,
+  payload: Payload,
+  db: web::Data<DatabaseConnection>,
+) -> impl Responder {
+  let content_type = request
+    .headers()
+    .get("Content-Type")
+    .and_then(|v| v.to_str().ok())
+    .unwrap_or("application/octet-stream");
+  match content_type {
+    t if t.contains("multipart/form-data") => Ok(
+      HttpResponse::NotImplemented().body("Not implemented upload file by `multipart/form-data`"),
+    ),
+    "application/octet-stream" => {
+      into_message!(push_item_octet_stream(payload, db.into_inner()).await)
+    }
+    "application/json" => {
+      Ok(HttpResponse::NotImplemented().body("Not implemented upload file by `application/json`"))
+    }
+    "application/x-www-form-urlencoded" => Ok(
+      HttpResponse::NotImplemented()
+        .body("Not implemented upload file by `application/x-www-form-urlencoded`"),
+    ),
+    _ => Err(FileError::NotSupportedContentType(content_type.to_string())),
+  }
 }
 
 /// get item from server

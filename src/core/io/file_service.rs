@@ -1,13 +1,16 @@
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use actix_files::NamedFile;
+use actix_web::web::Payload;
+use futures::StreamExt;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
-use tokio::{fs::File, io::AsyncWriteExt};
+use tokio::{
+  fs::File,
+  io::{self, AsyncWriteExt},
+};
 use url::Url;
 
-use crate::{
-  configuration::Configuration, core::io::file_controller::FileError, entities::path_mappings,
-};
+use crate::{core::io::file_controller::FileError, entities::path_mappings};
 
 async fn local_file_handler(url: &Url, id: u64) -> Result<NamedFile, FileError> {
   NamedFile::open_async(url.path())
@@ -110,4 +113,68 @@ pub async fn push_item_link(link: Url, db: Arc<DatabaseConnection>) -> Result<u6
     .inspect_err(|err| log::error!("{err}"))
     .map_err(|err| FileError::InternalError("Unknown error".to_string()))?;
   Ok(path_mapping.pmid)
+}
+
+pub async fn push_item_octet_stream(
+  payload: Payload,
+  db: Arc<DatabaseConnection>,
+) -> Result<usize, FileError> {
+  // TODO set a default directory.
+  push_item_octet_stream_with_path(payload, "", db)
+    .await
+    .inspect_err(|err| log::error!("Upload file failed, error:{err}"))
+}
+
+pub async fn push_item_octet_stream_with_path<P>(
+  mut payload: Payload,
+  path: P,
+  db: Arc<DatabaseConnection>,
+) -> Result<usize, FileError>
+where
+  P: AsRef<Path>,
+{
+  let path = path.as_ref();
+  let mut file = File::create(path)
+    .await
+    .inspect_err(|err| log::error!("{err}"))
+    .map_err(|err| match err.kind() {
+      io::ErrorKind::StorageFull => FileError::InsufficientStorage,
+      _ => FileError::InternalError("Unknown error".to_string()),
+    })?;
+  let mut size = 0;
+
+  while let Some(chunk) = payload.next().await {
+    let chunk = chunk
+      .inspect_err(|err| log::error!("{err}"))
+      .map_err(|_err| FileError::InternalError("Unknown error".to_string()))?;
+    size += chunk.len();
+    file
+      .write_all(&chunk)
+      .await
+      .inspect_err(|err| log::error!("{err}"))
+      .map_err(|err| match err.kind() {
+        io::ErrorKind::StorageFull => FileError::InsufficientStorage,
+        _ => FileError::InternalError("Unknown error".to_string()),
+      })?;
+  }
+
+  let url_string = format!(
+    "file://{}",
+    path
+      .canonicalize()
+      .map_err(|_err| FileError::InternalError("Unknown Error".to_string()))?
+      .to_str()
+      .ok_or(FileError::InternalError("Unknown Error".to_string()))?
+      .to_string()
+  );
+
+  let url = Url::parse(url_string.as_str())
+    .inspect_err(|err| log::error!("{err}"))
+    .map_err(|_err| FileError::InternalError(format!("Parse url error path: {path:?}")))?;
+
+  push_item_link(url, db)
+    .await
+    .map_err(|err| FileError::InternalError(err.to_string()))?;
+
+  Ok(size)
 }
