@@ -1,60 +1,109 @@
-use std::fmt::Display;
-use std::str::FromStr;
+use std::fmt::{Debug, Display};
+use std::sync::Arc;
 use std::{borrow::Cow, collections::HashMap};
 
 use actix_web::{HttpResponse, Responder, delete, get, post, web};
 
-use chrono::Utc;
 use cosmox_macros::{ActixWebError, auto_webapi_doc, page_helper};
-use sea_orm::{
-  ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
-  QueryFilter, QueryOrder, SqlErr,
-};
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
-use super::security::auth;
-use crate::into_message;
-use crate::utils::default_constants::default_page_size;
-use crate::utils::message::Pagination;
-use crate::{entities::users, utils::message::Message};
-use validator::{Validate, ValidationErrorsKind};
+use crate::user::user_service;
+use crate::{into_message, into_message_page};
+use validator::{Validate, ValidationError, ValidationErrorsKind};
 
 #[derive(Debug, Validate, Serialize, Deserialize, ToSchema)]
 pub struct UserSignUpRequest {
+  #[validate(
+    length(
+      min = 1,
+      max = 128,
+      message = "The `username` field must be between 1 and 128 characters."
+    ),
+    custom(function = "validate_username")
+  )]
   pub username: String,
+
+  #[validate(length(
+    min = 1,
+    max = 128,
+    message = "The `nickname` field must be between 1 and 128 characters."
+  ))]
   pub nickname: Option<String>,
   #[validate(length(
     min = 6,
     max = 128,
-    message = "The 'password' field must be between 6 and 128 characters."
+    message = "The `password` field must be between 6 and 128 characters."
   ))]
   pub password: String,
+  #[validate(length(
+    min = 6,
+    max = 128,
+    message = "The `password` field must be between 6 and 128 characters."
+  ))]
   pub confirm_password: String,
-  #[validate(email(message = "The 'email' field has an incorrect format."))]
+  #[validate(email(message = "The `email` field has an incorrect format."))]
   pub email: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Validate, Serialize, Deserialize, ToSchema)]
 pub struct UserLoginRequest {
   #[serde(flatten)]
-  pub ident: UserIdent,
+  #[validate(custom(function = "validate_userident"))]
+  pub ident: UserLoginIdent,
+  #[validate(length(
+    min = 6,
+    max = 128,
+    message = "The `password` field must be between 6 and 128 characters."
+  ))]
   pub password: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub enum UserIdent {
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub enum UserLoginIdent {
   #[serde(rename = "username")]
   Username(String),
   #[serde(rename = "email")]
   Email(String),
 }
 
+pub enum UserIdent {
+  Username(String),
+  Email(String),
+  Uid(u64),
+}
+
+impl From<UserLoginIdent> for UserIdent {
+  fn from(value: UserLoginIdent) -> Self {
+    match value {
+      UserLoginIdent::Email(email) => UserIdent::Email(email.clone()),
+      UserLoginIdent::Username(username) => UserIdent::Username(username.clone()),
+    }
+  }
+}
+
 impl Display for UserIdent {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
-      UserIdent::Email(ident) => write!(f, "{}", ident),
-      UserIdent::Username(ident) => write!(f, "{}", ident),
+      UserIdent::Uid(uid) => write!(f, "uid: {}", uid),
+      UserIdent::Username(username) => write!(f, "username: {}", username),
+      UserIdent::Email(email) => write!(f, "email: {}", email),
+    }
+  }
+}
+
+impl Debug for UserIdent {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    Display::fmt(self, f)
+  }
+}
+
+impl Display for UserLoginIdent {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      UserLoginIdent::Email(ident) => write!(f, "{}", ident),
+      UserLoginIdent::Username(ident) => write!(f, "{}", ident),
     }
   }
 }
@@ -84,9 +133,9 @@ pub struct UserQueryRequest {
 /// Errors related to user operations.
 #[derive(Debug, thiserror::Error, ActixWebError)]
 pub enum UserError {
-  #[error("User not found with ID: {0}")]
+  #[error("User not found with {0}")]
   #[code(404)]
-  NotFound(u64),
+  NotFound(UserIdent),
 
   #[error("User '{0}' is not authorized to perform this action.")]
   #[code(403)]
@@ -96,9 +145,9 @@ pub enum UserError {
   #[code(409)]
   IdentTaken(String),
 
-  #[error("Invalid password provided.")]
+  #[error("Invalid password or username provided.")]
   #[code(401)]
-  InvalidPassword,
+  InvalidUsernamePassword,
 
   #[error("Validate failed")]
   #[code(409)]
@@ -130,56 +179,48 @@ pub enum UserError {
   InternalError(String),
 }
 
+pub fn validate_username(username: &str) -> Result<(), ValidationError> {
+  let mut username = username.chars();
+  let mut result = Ok(());
+  while let Some(ch) = username.next() {
+    if !matches!(ch,'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' ) {
+      result = Err(ValidationError::new(
+        "The `username` field must consist only of underscores, hyphens, letters and digits.",
+      ));
+      break;
+    }
+  }
+  result
+}
+
+pub fn validate_userident(ident: &UserLoginIdent) -> Result<(), ValidationError> {
+  match ident {
+    UserLoginIdent::Email(email) => {
+      if validator::ValidateEmail::validate_email(email) {
+        Ok(())
+      } else {
+        Err(ValidationError::new(
+          "The `email` field has an incorrect format.",
+        ))
+      }
+    }
+    UserLoginIdent::Username(username) => validate_username(username),
+  }
+}
+
 /// Sign up
 ///
 /// Create a new user
 #[auto_webapi_doc]
 #[post("signUp")]
 pub async fn sign_up(
-  body: web::Json<UserSignUpRequest>,
+  payload: web::Json<UserSignUpRequest>,
   db: web::Data<DatabaseConnection>,
-) -> Result<impl Responder, UserError> {
-  match body.validate() {
-    Ok(_) => {
-      if body.confirm_password != body.password {
-        return Err(UserError::ConfirmationPasswordMismatch);
-      }
-      log::debug!("sign up user {body:#?}");
-      let hash_password = auth::hash_password(&body.password).unwrap();
-      log::debug!("generate password hash {hash_password}");
-      let current_navie_datetime = Utc::now().naive_utc();
-      let user = users::ActiveModel {
-        username: Set(body.username.to_owned()),
-        password: Set(hash_password),
-        nickname: Set(body.nickname.to_owned()),
-        last_update_datetime: Set(current_navie_datetime),
-        create_datetime: Set(current_navie_datetime),
-        email: Set(body.email.to_owned()),
-        ..Default::default()
-      };
-
-      match user.insert(db.as_ref()).await {
-        Ok(user) => {
-          let user_resp = UserResp {
-            uid: user.uid,
-            username: user.username,
-            email: user.email,
-          };
-          into_message!(Ok(user_resp))
-        }
-        Err(err) => {
-          if let Some(sqlerr) = err.sql_err()
-            && let SqlErr::UniqueConstraintViolation(message) = sqlerr
-            && message.contains("username") // TODO check field
-          {
-            Err(UserError::IdentTaken(body.username.clone()))
-          } else {
-            Err(UserError::InternalError("Unknown error".into())) // other database error
-          }
-        }
-      }
-    }
-    Err(err) => Err(UserError::Validation(err.errors().clone())),
+) -> impl Responder {
+  if let Err(err) = payload.validate() {
+    Err(UserError::Validation(err.errors().clone()))
+  } else {
+    into_message!(user_service::sign_up(Arc::new(payload.into_inner()), db.into_inner()).await)
   }
 }
 
@@ -187,14 +228,7 @@ pub async fn sign_up(
 #[auto_webapi_doc]
 #[delete("delete")]
 pub async fn delete(uid: web::Query<u64>, db: web::Data<DatabaseConnection>) -> impl Responder {
-  let user = users::ActiveModel {
-    uid: Set(uid.0),
-    ..Default::default()
-  };
-  match user.delete(db.as_ref()).await {
-    Ok(_) => HttpResponse::Ok().body(""),
-    Err(_) => HttpResponse::InternalServerError().body(""),
-  }
+  into_message!(user_service::delete(*uid, db.into_inner()).await)
 }
 
 /// Query User
@@ -204,32 +238,7 @@ pub async fn query(
   params: web::Query<UserQueryRequest>,
   db: web::Data<DatabaseConnection>,
 ) -> impl Responder {
-  let mut select = users::Entity::find();
-  let mut page = 0;
-
-  if let Some(inner_page) = params.page {
-    page = inner_page;
-  }
-
-  if let Some(search) = &params.search {
-    select = select.filter(users::Column::Username.contains(search));
-  };
-
-  if let Some(sort) = &params.sort
-    && let Ok(column) = users::Column::from_str(sort)
-  {
-    select = select.order_by(column, sea_orm::Order::Asc);
-  };
-
-  let paginator = select.paginate(db.as_ref(), params.page_size);
-  let result = paginator.fetch_page(page).await.unwrap();
-  let pagination = Pagination::new(
-    paginator.num_items().await.unwrap(),
-    params.page_size,
-    paginator.cur_page(),
-    "",
-  );
-  into_message!(Ok::<_, UserError>(result), pagination = Some(pagination))
+  into_message_page!(user_service::query(Arc::new(params.into_inner()), db.into_inner()).await)
 }
 
 /// get user
@@ -237,20 +246,8 @@ pub async fn query(
 /// get user entity by uid
 #[auto_webapi_doc]
 #[get("{uid}")]
-pub async fn get(
-  uid: web::Path<u64>,
-  db: web::Data<DatabaseConnection>,
-) -> Result<impl Responder, UserError> {
-  let user = users::Entity::find_by_id(*uid)
-    .one(db.as_ref())
-    .await
-    .unwrap();
-  if let Some(mut user) = user {
-    user.password = String::from("hidden");
-    into_message!(Ok(user))
-  } else {
-    Err(UserError::NotFound(uid.into_inner()))
-  }
+pub async fn get(uid: web::Path<u64>, db: web::Data<DatabaseConnection>) -> impl Responder {
+  into_message!(user_service::get_user(*uid, db.into_inner()).await)
 }
 
 /// Login
@@ -259,41 +256,13 @@ pub async fn get(
 #[auto_webapi_doc]
 #[post("login")]
 pub async fn login(
-  body: web::Json<UserLoginRequest>,
+  payload: web::Json<UserLoginRequest>,
   db: web::Data<DatabaseConnection>,
-) -> Result<impl Responder, UserError> {
-  println!("{}", serde_json::to_string_pretty(&body).unwrap());
-  let user = match &body.ident {
-    UserIdent::Username(username) => users::Entity::find()
-      .filter(users::Column::Username.eq(username))
-      .all(db.as_ref())
-      .await
-      .unwrap(),
-    UserIdent::Email(email) => users::Entity::find()
-      .filter(users::Column::Email.eq(email))
-      .all(db.as_ref())
-      .await
-      .unwrap(),
-  };
-  if let Some(user) = user.first() {
-    match auth::verify_password(&body.password, &user.password) {
-      Ok(_) => {
-        // generate token
-        let token = auth::generate_jwt(&user.uid.to_string(), auth::get_jwt_secret_key())
-          .inspect_err(|err| log::error!("{err}"))
-          .map_err(|_err| UserError::InternalError("Token generate error".to_string()));
-        into_message!(token)
-      }
-      Err(err) => {
-        if let argon2::password_hash::Error::Password = err {
-          Err(UserError::InvalidPassword)
-        } else {
-          Err(UserError::LoginFailed(body.ident.to_string()))
-        }
-      }
-    }
+) -> impl Responder {
+  if let Err(err) = payload.validate() {
+    Err(UserError::Validation(err.errors().clone()))
   } else {
-    Err(UserError::NotFound(1))
+    into_message!(user_service::login(Arc::new(payload.into_inner()), db.into_inner()).await)
   }
 }
 
