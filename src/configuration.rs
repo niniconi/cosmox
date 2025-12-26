@@ -49,6 +49,7 @@ pub struct CosmoxConfiguration {
   pub name: String,
   pub scanner: ScannerConfiguration,
   pub library: LibraryConfiguration,
+  pub data: DataConfiguration,
   pub plugin: PluginConfiguration,
   pub cache: CacheConfiguration,
   pub log: LogConfiguration,
@@ -66,6 +67,11 @@ pub struct ScannerConfiguration {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct LibraryConfiguration {
+  pub path: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct DataConfiguration {
   pub path: String,
 }
 

@@ -12,6 +12,8 @@ cosmox:
   scanner:
     metadata-path: "test/metadata"
   library:
+    path: "test/library"
+  data:
     path: "test/data"
   plugin:
     path: "test/plugin"

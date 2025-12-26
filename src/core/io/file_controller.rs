@@ -4,11 +4,18 @@ use actix_web::{
 };
 use cosmox_macros::{ActixWebError, auto_webapi_doc};
 use sea_orm::DatabaseConnection;
+use serde::Serialize;
 
 use crate::{
   core::io::file_service::{self, push_item_octet_stream},
   into_message,
 };
+
+#[derive(Serialize)]
+pub struct PushResponse {
+  pub pmid: u64,
+  pub uploaded_size: usize,
+}
 
 /// Errors related to file operations (upload, download, management).
 #[derive(Debug, thiserror::Error, ActixWebError)]

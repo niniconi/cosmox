@@ -2,6 +2,7 @@ use std::fmt::{Debug, Display};
 use std::sync::Arc;
 use std::{borrow::Cow, collections::HashMap};
 
+use actix_web::web::Payload;
 use actix_web::{HttpResponse, Responder, delete, get, post, web};
 
 use cosmox_macros::{ActixWebError, auto_webapi_doc, page_helper};
@@ -270,9 +271,13 @@ pub async fn login(
 ///
 /// upload a small picture as your account's avatar
 #[auto_webapi_doc]
-#[post("{uid}/uploadAvatar")]
-pub async fn upload_avatar(_uid: web::Path<u64>) -> impl Responder {
-  HttpResponse::NotImplemented().body("Not implemented {uid}/uploadAvatar api")
+#[post("{uid}/upload/avatar")]
+pub async fn upload_avatar(
+  uid: web::Path<u64>,
+  payload: Payload,
+  db: web::Data<DatabaseConnection>,
+) -> impl Responder {
+  into_message!(user_service::upload_user_avatar(*uid, payload, db.into_inner()).await)
 }
 
 #[auto_webapi_doc]

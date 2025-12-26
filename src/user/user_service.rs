@@ -1,12 +1,18 @@
-use std::{str::FromStr, sync::Arc};
+use std::{io, path::PathBuf, str::FromStr, sync::Arc};
 
+use actix_web::web::Payload;
 use chrono::Utc;
 use sea_orm::{
   ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait,
-  QueryFilter, QueryOrder, SqlErr,
+  QueryFilter, QueryOrder, SqlErr, Value, sea_query::expr::Expr,
 };
 
 use crate::{
+  configuration::Configuration,
+  core::io::{
+    file_controller::{FileError, PushResponse},
+    file_service,
+  },
   entities::users,
   user::{
     security::auth,
@@ -63,7 +69,8 @@ pub async fn sign_up(
     Err(err) => {
       if let Some(sqlerr) = err.sql_err()
         && let SqlErr::UniqueConstraintViolation(message) = sqlerr
-        && message.contains("username") // TODO check message.
+        && message.contains("username")
+      // TODO check message.
       {
         Err(UserError::IdentTaken(body.username.clone()))
       } else {
@@ -154,4 +161,36 @@ pub async fn query(
     "",
   );
   Ok((result, pagination))
+}
+
+pub async fn upload_user_avatar(
+  uid: u64,
+  payload: Payload,
+  db: Arc<DatabaseConnection>,
+) -> Result<PushResponse, FileError> {
+  let mut profile_picture_path =
+    PathBuf::from(&Configuration::get_global_configuration().cosmox.data.path);
+  profile_picture_path.push("avatar");
+  if !profile_picture_path.exists() {
+    std::fs::create_dir_all(&profile_picture_path).map_err(|err| match err.kind() {
+      io::ErrorKind::StorageFull => FileError::InsufficientStorage,
+      _ => FileError::InternalError("Unknown error".to_string()),
+    })?;
+  }
+
+  let push_response =
+    file_service::push_item_octet_stream_with_path(payload, profile_picture_path, db.clone())
+      .await?;
+
+  let _ = users::Entity::update_many()
+    .col_expr(
+      users::Column::Avatar,
+      Expr::value(Value::BigUnsigned(Some(push_response.pmid))),
+    )
+    .filter(users::Column::Uid.eq(uid))
+    .exec(db.as_ref())
+    .await
+    .inspect_err(|err| log::error!("{err}"))
+    .map_err(|_err| FileError::InternalError("Database error".to_string()))?;
+  Ok(push_response)
 }

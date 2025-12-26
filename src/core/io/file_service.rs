@@ -1,4 +1,7 @@
-use std::{path::Path, sync::Arc};
+use std::{
+  path::{Path, PathBuf},
+  sync::Arc,
+};
 
 use actix_files::NamedFile;
 use actix_web::web::Payload;
@@ -10,7 +13,11 @@ use tokio::{
 };
 use url::Url;
 
-use crate::{core::io::file_controller::FileError, entities::path_mappings};
+use crate::{
+  configuration::Configuration,
+  core::io::file_controller::{FileError, PushResponse},
+  entities::path_mappings,
+};
 
 async fn local_file_handler(url: &Url, id: u64) -> Result<NamedFile, FileError> {
   NamedFile::open_async(url.path())
@@ -118,9 +125,17 @@ pub async fn push_item_link(link: Url, db: Arc<DatabaseConnection>) -> Result<u6
 pub async fn push_item_octet_stream(
   payload: Payload,
   db: Arc<DatabaseConnection>,
-) -> Result<usize, FileError> {
-  // TODO set a default directory.
-  push_item_octet_stream_with_path(payload, "", db)
+) -> Result<PushResponse, FileError> {
+  let mut default_path = PathBuf::from(&Configuration::get_global_configuration().cosmox.data.path);
+  default_path.push("files");
+  if !default_path.exists() {
+    std::fs::create_dir_all(&default_path).map_err(|err| match err.kind() {
+      io::ErrorKind::StorageFull => FileError::InsufficientStorage,
+      _ => FileError::InternalError("Unknown error".to_string()),
+    })?;
+  }
+
+  push_item_octet_stream_with_path(payload, &default_path, db)
     .await
     .inspect_err(|err| log::error!("Upload file failed, error:{err}"))
 }
@@ -129,11 +144,14 @@ pub async fn push_item_octet_stream_with_path<P>(
   mut payload: Payload,
   path: P,
   db: Arc<DatabaseConnection>,
-) -> Result<usize, FileError>
+) -> Result<PushResponse, FileError>
 where
   P: AsRef<Path>,
 {
-  let path = path.as_ref();
+  let mut path = path.as_ref().to_path_buf();
+  path.push(uuid::Uuid::new_v4().to_string());
+  let path = path.as_path();
+
   let mut file = File::create(path)
     .await
     .inspect_err(|err| log::error!("{err}"))
@@ -172,9 +190,12 @@ where
     .inspect_err(|err| log::error!("{err}"))
     .map_err(|_err| FileError::InternalError(format!("Parse url error path: {path:?}")))?;
 
-  push_item_link(url, db)
+  let pmid = push_item_link(url, db)
     .await
     .map_err(|err| FileError::InternalError(err.to_string()))?;
 
-  Ok(size)
+  Ok(PushResponse {
+    pmid,
+    uploaded_size: size,
+  })
 }
