@@ -24,6 +24,14 @@ pub enum Relation {
   Devices,
   #[sea_orm(has_many = "super::librarys::Entity")]
   Librarys,
+  #[sea_orm(
+    belongs_to = "super::path_mappings::Entity",
+    from = "Column::Avatar",
+    to = "super::path_mappings::Column::Pmid",
+    on_update = "Cascade",
+    on_delete = "Cascade"
+  )]
+  PathMappings,
   #[sea_orm(has_many = "super::users_related_roles::Entity")]
   UsersRelatedRoles,
 }
@@ -37,6 +45,12 @@ impl Related<super::devices::Entity> for Entity {
 impl Related<super::librarys::Entity> for Entity {
   fn to() -> RelationDef {
     Relation::Librarys.def()
+  }
+}
+
+impl Related<super::path_mappings::Entity> for Entity {
+  fn to() -> RelationDef {
+    Relation::PathMappings.def()
   }
 }
 
