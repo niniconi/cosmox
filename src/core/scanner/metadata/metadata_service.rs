@@ -1,5 +1,5 @@
 use std::{
-  fmt::{Debug, Display},
+  fmt::Debug,
   fs::{self, File},
   io::BufReader,
   path::{Path, PathBuf},

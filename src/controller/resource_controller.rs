@@ -5,12 +5,7 @@ use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::{
-  entities::{resources, tags},
-  into_message, into_message_page,
-  services::resource_service,
-  utils::message::Message,
-};
+use crate::{into_message, into_message_page, services::resource_service};
 
 /// Errors related to individual media file (resource) operations.
 #[derive(Debug, thiserror::Error, ActixWebError)]

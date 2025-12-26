@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::{fs, path::Path};
 
 use anyhow::Result;
-use tracing::{Level, info_span, span};
+use tracing::{Level, span};
 use wasmtime::component::{Component, HasSelf, Linker, ResourceTable};
 use wasmtime::*;
 // use wasmtime_wasi::p2::bindings::sync::Command;

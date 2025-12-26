@@ -181,9 +181,9 @@ pub enum UserError {
 }
 
 pub fn validate_username(username: &str) -> Result<(), ValidationError> {
-  let mut username = username.chars();
+  let username = username.chars();
   let mut result = Ok(());
-  while let Some(ch) = username.next() {
+  for ch in username {
     if !matches!(ch,'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' ) {
       result = Err(ValidationError::new(
         "The `username` field must consist only of underscores, hyphens, letters and digits.",

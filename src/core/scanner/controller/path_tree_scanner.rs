@@ -5,7 +5,7 @@ use cosmox_macros::auto_webapi_doc;
 use serde::Deserialize;
 use utoipa::IntoParams;
 
-use crate::{into_message, utils::{self, message::Message}};
+use crate::{into_message, utils};
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct GetSubPathParams {
@@ -40,7 +40,7 @@ pub async fn get_sub_path(params: web::Query<GetSubPathParams>) -> impl Responde
           }
         })
         .collect();
-        into_message!(Ok::<_, ()>(result)).unwrap()
+      into_message!(Ok::<_, ()>(result)).unwrap()
     }
     Err(err) => {
       // TODO impl error handle

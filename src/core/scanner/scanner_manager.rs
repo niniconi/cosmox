@@ -309,13 +309,13 @@ pub async fn store_metadata(
 
       let rid = resource_service::add_resource_by_metadata(
         lid,
-        &*metadata.lock().unwrap(),
+        &metadata.lock().unwrap(),
         db.clone(),
       )
       .await
       .map_err(|_err| ScannerError::InternalError("Database error".to_string()))?;
 
-      if (!inserted_tags.is_empty()) {
+      if !inserted_tags.is_empty() {
         let _ = resource_service::add_tags_for_resource(rid, inserted_tags, db.clone()).await;
       }
 

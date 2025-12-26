@@ -4,10 +4,7 @@ use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use crate::{
-  entities::users,
-  user::{self, security::auth},
-};
+use crate::{entities::users, user::security::auth};
 
 #[derive(Debug, Serialize)]
 struct Status {

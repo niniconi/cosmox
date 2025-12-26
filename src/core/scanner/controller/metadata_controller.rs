@@ -1,7 +1,6 @@
-use std::{fs::File, io::BufReader, sync::Arc};
+use std::sync::Arc;
 
 use actix_web::{HttpResponse, Responder, get, web};
-use cosmox_api::metadata::Metadata;
 use cosmox_macros::{ActixWebError, auto_webapi_doc};
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;

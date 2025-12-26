@@ -1,7 +1,5 @@
 use wasmtime::Store;
-use wasmtime::component::Accessor;
 
-use super::plugin_loader::bindings::cosmox::plugin::cosmox_api as bindings_cosmox_api;
 use super::plugin_loader::bindings::cosmox::plugin::cosmox_types as bindings_cosmox_types;
 use crate::core::plugin::{
   plugin_loader::{ComponentRunStates, bindings::PluginHostWorld},

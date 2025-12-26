@@ -2,18 +2,14 @@ use std::{str::FromStr, sync::Arc};
 
 use chrono::Utc;
 use cosmox_api::metadata::Metadata;
-use futures::future::try_join_all;
 use sea_orm::{
-  ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait, Iden, PaginatorTrait,
-  QueryOrder, TransactionError, TransactionTrait,
+  ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder,
+  TransactionTrait,
 };
 
 use crate::{
-  controller::{
-    resource_controller::{ResourceError, ResourceQueryRequest},
-    tag_controller::TagError,
-  },
-  entities::{resources, resources_related_tags, tags},
+  controller::resource_controller::{ResourceError, ResourceQueryRequest},
+  entities::{resources, resources_related_tags},
   utils::message::Pagination,
 };
 

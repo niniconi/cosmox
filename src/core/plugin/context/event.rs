@@ -25,13 +25,7 @@ pub struct MetadataContext {
 
 impl MetadataContext {
   pub fn query_by_path(&mut self, path: String) -> Option<Arc<Mutex<Metadata<()>>>> {
-    if self.inner.is_none() {
-      return None;
-    }
-
-    if self.inner.is_none() {
-      return None;
-    }
+    self.inner.as_ref()?;
 
     let rid = self.inner.clone().unwrap().lock().unwrap().rid;
 

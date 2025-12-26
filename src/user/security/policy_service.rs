@@ -148,7 +148,7 @@ impl PolicyService {
 
     match select.all(db.as_ref()).await {
       Ok(roles) => Ok(roles),
-      Err(err) => Err(AclError::InternalError("Database error".to_string())),
+      Err(_err) => Err(AclError::InternalError("Database error".to_string())),
     }
   }
 

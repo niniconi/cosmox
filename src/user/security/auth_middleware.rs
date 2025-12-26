@@ -1,7 +1,4 @@
-use std::{
-  future::{Ready, ready},
-  sync::Arc,
-};
+use std::future::{Ready, ready};
 
 use actix_web::{
   Error,
@@ -59,7 +56,7 @@ where
 
     Box::pin(async move {
       if let Err(error) = auth_service
-        .check_resource_access(token, path,method, db.clone().into_inner())
+        .check_resource_access(token, path, method, db.clone().into_inner())
         .await
       {
         Err(actix_web::error::ErrorUnauthorized(format!("{error}")))

@@ -1,15 +1,13 @@
 use std::sync::{LazyLock, RwLock};
 
-use actix_web::{HttpResponse, Responder, get, http::StatusCode, post, web};
+use actix_web::{HttpResponse, Responder, get, post, web};
 
 use cosmox_macros::{ActixWebError, auto_webapi_doc};
-use futures::{FutureExt, future::join_all};
 use sea_orm::DatabaseConnection;
 
 use crate::{
   core::scanner::scanner_manager::{self, start_scanner},
   into_message,
-  utils::message::Message,
 };
 
 #[derive(Debug, thiserror::Error, ActixWebError)]
