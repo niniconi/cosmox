@@ -310,7 +310,6 @@ pub async fn store_metadata(
       let rid = resource_service::add_resource_by_metadata(
         lid,
         &*metadata.lock().unwrap(),
-        "".to_string(),
         db.clone(),
       )
       .await

@@ -6,6 +6,7 @@ pub mod devices;
 pub mod library_paths;
 pub mod librarys;
 pub mod librarys_related_tags;
+pub mod metadata_indexes;
 pub mod path_mappings;
 pub mod permissions;
 pub mod resources;

@@ -4,6 +4,7 @@ pub use super::devices::Entity as Devices;
 pub use super::library_paths::Entity as LibraryPaths;
 pub use super::librarys::Entity as Librarys;
 pub use super::librarys_related_tags::Entity as LibrarysRelatedTags;
+pub use super::metadata_indexes::Entity as MetadataIndexes;
 pub use super::path_mappings::Entity as PathMappings;
 pub use super::permissions::Entity as Permissions;
 pub use super::resources::Entity as Resources;

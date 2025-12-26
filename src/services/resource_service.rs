@@ -40,7 +40,6 @@ pub async fn add_resource(db: Arc<DatabaseConnection>) -> Result<(), ResourceErr
 pub async fn add_resource_by_metadata(
   lid: u64,
   metadata: &Metadata<()>,
-  metadata_path: String,
   db: Arc<DatabaseConnection>,
 ) -> Result<u64, ResourceError> {
   let current_datetime = Utc::now().naive_utc();
@@ -50,7 +49,6 @@ pub async fn add_resource_by_metadata(
     create_datetime: Set(current_datetime),
     last_update_datetime: Set(current_datetime),
     lid: Set(Some(lid)),
-    metadata_parent_path: Set(Some(metadata_path)),
     ..Default::default()
   };
 

@@ -274,9 +274,9 @@ impl<T: Decode<()>> Metadata<T> {
     )
   }
 
-  pub fn bindecode_from<R: std::io::Read>(src: &mut R) -> Result<Arc<Metadata<T>>> {
+  pub fn bindecode_from<R: std::io::Read>(src: &mut R) -> Result<Arc<Mutex<Metadata<T>>>> {
     let config = bincode::config::standard();
-    Ok(bincode::decode_from_std_read::<Arc<Metadata<T>>, _, _>(
+    Ok(bincode::decode_from_std_read::<Arc<Mutex<Metadata<T>>>, _, _>(
       src, config,
     )?)
   }

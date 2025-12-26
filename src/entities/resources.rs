@@ -13,7 +13,7 @@ pub struct Model {
   pub lid: Option<u64>,
   pub create_datetime: DateTime,
   pub last_update_datetime: DateTime,
-  pub metadata_parent_path: Option<String>,
+  pub metadata_index: Option<u64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -26,6 +26,14 @@ pub enum Relation {
     on_delete = "Cascade"
   )]
   Librarys,
+  #[sea_orm(
+    belongs_to = "super::metadata_indexes::Entity",
+    from = "Column::MetadataIndex",
+    to = "super::metadata_indexes::Column::Mid",
+    on_update = "Restrict",
+    on_delete = "Restrict"
+  )]
+  MetadataIndexes,
   #[sea_orm(has_many = "super::resources_related_tags::Entity")]
   ResourcesRelatedTags,
 }
@@ -33,6 +41,12 @@ pub enum Relation {
 impl Related<super::librarys::Entity> for Entity {
   fn to() -> RelationDef {
     Relation::Librarys.def()
+  }
+}
+
+impl Related<super::metadata_indexes::Entity> for Entity {
+  fn to() -> RelationDef {
+    Relation::MetadataIndexes.def()
   }
 }
 
