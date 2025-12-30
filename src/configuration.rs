@@ -36,6 +36,23 @@ pub struct DatabaseConfiguration {
   pub user: String,
   pub password: String,
   pub database: String,
+  pub option: Option<DatabaseOptions>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct DatabaseOptions {
+  #[serde(rename = "max-connections")]
+  pub max_connections: u32,
+  #[serde(rename = "min-connections")]
+  pub min_connections: u32,
+  #[serde(rename = "connect-timeout")]
+  pub connect_timeout: u64,
+  #[serde(rename = "acquire-timeout")]
+  pub acquire_timeout: u64,
+  #[serde(rename = "idle-timeout")]
+  pub idle_timeout: u64,
+  #[serde(rename = "max-lifetime")]
+  pub max_lifetime: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

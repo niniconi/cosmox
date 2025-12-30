@@ -129,17 +129,22 @@ async fn main() -> std::io::Result<()> {
     config.database.database
   );
 
-  let mut database_opt = ConnectOptions::new(database_url);
+  let db_connection: DatabaseConnection = if let Some(database_options) = &config.database.option {
+    let mut database_opt = ConnectOptions::new(database_url);
 
-  database_opt
-    .max_connections(100)
-    .min_connections(8)
-    .connect_timeout(Duration::from_secs(8))
-    .acquire_timeout(Duration::from_secs(8))
-    .idle_timeout(Duration::from_secs(10))
-    .max_lifetime(Duration::from_secs(30 * 60));
+    database_opt
+      .max_connections(database_options.max_connections)
+      .min_connections(database_options.min_connections)
+      .connect_timeout(Duration::from_secs(database_options.connect_timeout))
+      .acquire_timeout(Duration::from_secs(database_options.acquire_timeout))
+      .idle_timeout(Duration::from_secs(database_options.idle_timeout))
+      .max_lifetime(Duration::from_secs(database_options.max_lifetime));
 
-  let db_connection: DatabaseConnection = Database::connect(database_opt).await.unwrap();
+    Database::connect(database_opt).await.unwrap()
+  } else {
+    Database::connect(database_url).await.unwrap()
+  };
+
   let db_connection_app_data = web::Data::new(db_connection);
   let server_host = config.server.host.as_ref();
   let server_port = config.server.port;
