@@ -9,6 +9,7 @@ use configuration::Configuration;
 use controller::{
   library_controller, resource_controller, system_controller, tag_controller, ui_controller,
 };
+use migration::{Migrator, MigratorTrait};
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -144,6 +145,8 @@ async fn main() -> std::io::Result<()> {
   } else {
     Database::connect(database_url).await.unwrap()
   };
+
+  Migrator::up(&db_connection, None).await.unwrap();
 
   let db_connection_app_data = web::Data::new(db_connection);
   let server_host = config.server.host.as_ref();

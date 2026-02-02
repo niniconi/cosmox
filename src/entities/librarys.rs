@@ -34,10 +34,10 @@ pub enum Relation {
   Types,
   #[sea_orm(
     belongs_to = "super::users::Entity",
-    from = "Column::Type",
+    from = "Column::CreateByUid",
     to = "super::users::Column::Uid",
-    on_update = "SetNull",
-    on_delete = "SetNull"
+    on_update = "Cascade",
+    on_delete = "Cascade"
   )]
   Users,
 }
