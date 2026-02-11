@@ -1,15 +1,16 @@
 use std::sync::Arc;
 
-use actix_web::http::{Method, header::HeaderValue};
+use actix_web::{
+  http::{Method, header::HeaderValue},
+  web::method,
+};
 use sea_orm::{
-  ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
-  JoinType, QueryFilter, QuerySelect, RelationTrait,
+  ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, JoinType,
+  QueryFilter, QuerySelect, RelationTrait,
 };
 
 use crate::{
-  entities::{
-    permissions, roles, roles_related_permissions, users_related_roles,
-  },
+  entities::{permissions, roles, roles_related_permissions, users_related_roles},
   user::{
     acl_controller::{AclError, PermissionAddRequest, RoleAddRequest},
     security::auth::{self, Claims},
@@ -50,10 +51,15 @@ impl PolicyService {
     db: Arc<DatabaseConnection>,
   ) -> Result<(), AuthError> {
     log::debug!("check resource access token: {token:?}");
-    if !path.starts_with("/api")
-      || path.starts_with("/api-docs")
-      || (path == "/api/user/login" && method == Method::POST)
-    {
+
+    let is_white_listed = match ((&method, &path[..])) {
+      (&Method::OPTIONS, _) => true,
+      (_, p) if !p.starts_with("/api") || p.starts_with("/api-docs") => true,
+      (&Method::POST, "/api/user/login") => true,
+      _ => false,
+    };
+
+    if is_white_listed {
       Ok(())
     } else if let Some(token) = token {
       //TODO Don't use unwarp()
@@ -152,7 +158,10 @@ impl PolicyService {
     }
   }
 
-  pub async fn add_permission(permission: PermissionAddRequest, db: Arc<DatabaseConnection>) -> Result<(), AclError> {
+  pub async fn add_permission(
+    permission: PermissionAddRequest,
+    db: Arc<DatabaseConnection>,
+  ) -> Result<(), AclError> {
     let permission = permissions::ActiveModel {
       name: Set(permission.name),
       description: Set(permission.description),

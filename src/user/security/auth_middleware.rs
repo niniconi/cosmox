@@ -50,7 +50,7 @@ where
     let db = req.app_data::<Data<DatabaseConnection>>().unwrap().clone();
     let path = req.path().to_string();
     let method = req.method().clone();
-    let token = req.headers().get("token").cloned();
+    let token = req.headers().get("Authorization").cloned();
 
     let fut = self.service.call(req);
 

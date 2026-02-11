@@ -4,7 +4,8 @@
 use core::io::file_controller;
 use std::{env, time::Duration};
 
-use actix_web::{App, HttpServer, web};
+use actix_cors::Cors;
+use actix_web::{App, HttpServer, http::header, web};
 use configuration::Configuration;
 use controller::{
   library_controller, resource_controller, system_controller, tag_controller, ui_controller,
@@ -163,10 +164,32 @@ async fn main() -> std::io::Result<()> {
   println!("{}", serde_json::to_string_pretty(config).unwrap());
 
   HttpServer::new(move || {
+    let cors = Cors::default()
+      .allow_any_origin()
+      .allowed_methods(vec!["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+      .allowed_headers(vec![
+        header::AUTHORIZATION,
+        header::ACCEPT,
+        header::CONTENT_TYPE,
+        header::RANGE,
+        header::IF_RANGE,
+        header::CACHE_CONTROL,
+        header::PRAGMA,
+        header::HeaderName::from_static("x-session-id"),
+        header::HeaderName::from_static("x-client-version"),
+      ])
+      .expose_headers(vec![
+        header::CONTENT_RANGE,
+        header::CONTENT_LENGTH,
+        header::ACCEPT_RANGES,
+        header::SERVER,
+      ])
+      .max_age(3600);
     App::new()
       .app_data(db_connection_app_data.clone())
       .app_data(config_app_data.clone())
       .app_data(policy_service.clone())
+      .wrap(cors)
       .wrap(TokenAuth)
       .service(
         web::scope("api")
