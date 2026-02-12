@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, atomic::Ordering};
 
 use actix_web::{
   http::{Method, header::HeaderValue},
@@ -10,6 +10,7 @@ use sea_orm::{
 };
 
 use crate::{
+  configuration::Configuration,
   entities::{permissions, roles, roles_related_permissions, users_related_roles},
   user::{
     acl_controller::{AclError, PermissionAddRequest, RoleAddRequest},
@@ -52,10 +53,21 @@ impl PolicyService {
   ) -> Result<(), AuthError> {
     log::debug!("check resource access token: {token:?}");
 
+    let is_first_boot = Configuration::get_global_configuration()
+      .state
+      .is_first_boot.load(Ordering::Relaxed);
     let is_white_listed = match ((&method, &path[..])) {
       (&Method::OPTIONS, _) => true,
       (_, p) if !p.starts_with("/api") || p.starts_with("/api-docs") => true,
       (&Method::POST, "/api/user/login") => true,
+      (&Method::GET, "/api/system/info") if is_first_boot => true,
+      (&Method::POST, "/api/initialize") => {
+        if is_first_boot {
+          true
+        } else {
+          return Err(AuthError::Forbidden);
+        }
+      }
       _ => false,
     };
 

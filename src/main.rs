@@ -24,6 +24,7 @@ use core::{
 };
 
 use crate::{
+  controller::init,
   core::{plugin::plugin_manager::PluginManager, scanner::controller::metadata_controller},
   user::{
     acl_controller,
@@ -193,6 +194,7 @@ async fn main() -> std::io::Result<()> {
       .wrap(TokenAuth)
       .service(
         web::scope("api")
+          .service(init::initialize)
           .service(
             web::scope("system")
               .service(system_controller::info)

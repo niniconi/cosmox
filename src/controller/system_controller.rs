@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::{
   fs::{self, File},
   io::Read,
-  process::exit,
+  process::exit, sync::atomic::Ordering,
 };
 use sysinfo::System;
 
@@ -15,6 +15,7 @@ struct SystemInfo {
   name: &'static str,
   version: &'static str,
   author: &'static str,
+  is_first_boot: bool,
 }
 
 /// Errors related to system management operations (e.g., shutdown, restart).
@@ -63,6 +64,9 @@ pub async fn info() -> impl Responder {
     name: env!("CARGO_PKG_NAME"),
     version: env!("CARGO_PKG_VERSION"),
     author: env!("CARGO_PKG_AUTHORS"),
+    is_first_boot: Configuration::get_global_configuration()
+      .state
+      .is_first_boot.load(Ordering::Relaxed),
   };
   HttpResponse::Ok().json(info)
 }

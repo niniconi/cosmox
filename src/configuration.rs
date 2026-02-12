@@ -1,4 +1,10 @@
-use std::sync::LazyLock;
+use std::{
+  path::Path,
+  sync::{
+    LazyLock,
+    atomic::{AtomicBool, Ordering},
+  },
+};
 
 use config::{Config as ConfigLoader, File};
 use serde::{Deserialize, Serialize};
@@ -12,15 +18,27 @@ pub struct Configuration {
   pub database: DatabaseConfiguration,
   #[serde(rename = "cosmox")]
   pub cosmox: CosmoxConfiguration,
+  #[serde(skip)]
+  pub state: State,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub struct State {
+  pub is_first_boot: AtomicBool,
 }
 
 static GLOBAL_CONFIGURATION: LazyLock<Configuration> = LazyLock::new(|| {
-  ConfigLoader::builder()
+  let mut config = ConfigLoader::builder()
     .add_source(File::with_name("application.yaml").required(true))
     .build()
     .unwrap()
     .try_deserialize::<Configuration>()
-    .unwrap()
+    .unwrap();
+  config
+    .state
+    .is_first_boot
+    .store(!Path::new(".first_boot.lock").exists(), Ordering::Relaxed);
+  config
 });
 
 impl Configuration {
