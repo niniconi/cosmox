@@ -57,7 +57,7 @@ pub mod utils;
   tag_controller::group_get,
   tag_controller::add,
   tag_controller::group_add,
-  tag_controller::group_del,
+  tag_controller::group_delete,
   tag_controller::query,
   tag_controller::group_query,
   tag_controller::all_query,
@@ -217,7 +217,7 @@ async fn main() -> std::io::Result<()> {
               .service(tag_controller::group_get)
               .service(tag_controller::add)
               .service(tag_controller::group_add)
-              .service(tag_controller::group_del)
+              .service(tag_controller::group_delete)
               .service(tag_controller::query)
               .service(tag_controller::group_query)
               .service(tag_controller::all_query)

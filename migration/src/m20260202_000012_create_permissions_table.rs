@@ -18,8 +18,14 @@ impl MigrationTrait for Migration {
               .auto_increment()
               .primary_key(),
           )
-          .col(ColumnDef::new(Permissions::Name).string().not_null())
+          .col(
+            ColumnDef::new(Permissions::Name)
+              .string()
+              .not_null()
+              .unique_key(),
+          )
           .col(ColumnDef::new(Permissions::Description).string().null())
+          .col(ColumnDef::new(Permissions::Builtin).boolean().not_null())
           .to_owned(),
       )
       .await
@@ -38,4 +44,5 @@ enum Permissions {
   Pid,
   Name,
   Description,
+  Builtin
 }

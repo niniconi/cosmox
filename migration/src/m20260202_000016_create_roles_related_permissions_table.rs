@@ -28,6 +28,11 @@ impl MigrationTrait for Migration {
               .big_unsigned()
               .not_null(),
           )
+          .col(
+            ColumnDef::new(RolesRelatedPermissions::Builtin)
+              .boolean()
+              .not_null(),
+          )
           .foreign_key(
             ForeignKey::create()
               .name("fk-rrp-role_id")
@@ -66,6 +71,7 @@ enum RolesRelatedPermissions {
   Rrpid,
   Rid,
   Pid,
+  Builtin,
 }
 
 #[derive(DeriveIden)]

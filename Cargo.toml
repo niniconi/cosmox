@@ -41,7 +41,7 @@ otp = "0.2.0"
 ffmpeg-next = "8.0.0"
 rand_core = { version = "0.9.3", features = ["std"] }
 actix-files = "0.6.6"
-sea-orm = { version = "1.1.12", features = ["sqlx-mysql", "runtime-tokio-rustls", "macros"] }
+sea-orm = { version = "2.0.0-rc", features = ["sqlx-mysql", "runtime-tokio-rustls", "macros"] }
 regex = "1.11.1"
 actix-multipart = "0.7.2"
 futures-util = "0.3.31"
@@ -52,6 +52,7 @@ wasmtime-wasi-http = { version = "39.0.1" }
 tracing-appender = "0.2.3"
 cosmox-api = { path = "./cosmox-api" }
 cosmox-macros = { path = "./cosmox-macros" }
+migration = { path = "./migration" }
 lru = "0.16.0"
 bincode = "2.0.1"
 url = "2.5.7"
@@ -71,6 +72,7 @@ wit-bindgen = { version = "0.49.0", features = ["async"] }
 debug = false
 
 [profile.release]
+codegen-units = 1
 strip = true
 lto = true
 
@@ -79,7 +81,8 @@ resolver = "2"
 members = [
   "cosmox-api",
   "cosmox-macros",
-  "cosmox-plugin-pack"
+  "cosmox-plugin-pack",
+  "migration"
 ]
 
 [workspace.package]

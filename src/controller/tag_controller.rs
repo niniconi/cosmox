@@ -73,8 +73,8 @@ pub async fn group_add() -> impl Responder {
 }
 
 #[auto_webapi_doc]
-#[delete("group/del")]
-pub async fn group_del() -> impl Responder {
+#[delete("group/delete")]
+pub async fn group_delete() -> impl Responder {
   HttpResponse::NotImplemented().body("Not implemented group/del api")
 }
 

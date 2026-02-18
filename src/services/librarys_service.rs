@@ -10,6 +10,7 @@ use sea_orm::{
 use crate::{
   controller::library_controller::{LibraryAddRequest, LibraryError, LibraryQueryRequest},
   entities::{library_paths, librarys, librarys_related_tags},
+  user::security::auth_middleware::RequestUser,
   utils::message::Pagination,
 };
 
@@ -20,6 +21,7 @@ use crate::{
 pub async fn create_library_with_tags_and_paths(
   payload: Arc<LibraryAddRequest>,
   db: Arc<DatabaseConnection>,
+  req_user: RequestUser,
 ) -> Result<
   (
     librarys::Model,
@@ -28,6 +30,15 @@ pub async fn create_library_with_tags_and_paths(
   ),
   LibraryError,
 > {
+  let uid = match req_user.uid {
+    Some(uid) => uid,
+    None => {
+      log::error!("Expect `uid` at {req_user:?}");
+      return Err(LibraryError::InternalError(
+        "Expected a uid, got None".to_string(),
+      ));
+    }
+  };
   // check
 
   // insert into database
@@ -41,6 +52,7 @@ pub async fn create_library_with_tags_and_paths(
           description: Set(payload.description.clone()),
           create_datetime: Set(current_datetime),
           last_update_datetime: Set(current_datetime),
+          create_by_uid: Set(uid),
           ..Default::default()
         };
         let library = library

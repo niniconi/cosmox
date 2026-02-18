@@ -18,8 +18,9 @@ impl MigrationTrait for Migration {
               .auto_increment()
               .primary_key(),
           )
-          .col(ColumnDef::new(Roles::Name).string().not_null())
+          .col(ColumnDef::new(Roles::Name).string().not_null().unique_key())
           .col(ColumnDef::new(Roles::Description).string().null())
+          .col(ColumnDef::new(Roles::Builtin).boolean().not_null())
           .to_owned(),
       )
       .await
@@ -38,4 +39,5 @@ enum Roles {
   Rid,
   Name,
   Description,
+  Builtin,
 }

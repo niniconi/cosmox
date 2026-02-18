@@ -14,7 +14,10 @@ use crate::{
   entities::{permissions, roles, roles_related_permissions, users_related_roles},
   user::{
     acl_controller::{AclError, PermissionAddRequest, RoleAddRequest},
-    security::auth::{self, Claims},
+    security::{
+      auth::{self, Claims},
+      auth_middleware::{RequestUser, RequestUserInner},
+    },
   },
 };
 
@@ -44,18 +47,61 @@ pub enum AuthError {
 }
 
 impl PolicyService {
+  fn check_permissions(path: &str, permissions: &[permissions::Model]) -> bool {
+    let mut perm_iter = permissions.iter();
+    match path {
+      "/api/system/system.log" if !perm_iter.any(|x| x.name == "System.LogView") => false,
+      "/api/system/delete/all" if !perm_iter.any(|x| x.name == "System.Wipe") => false,
+      "/api/system/shutdown" | "/api/system/restart"
+        if !perm_iter.any(|x| x.name == "System.Power") =>
+      {
+        false
+      }
+
+      "/api/plugin/install" if !perm_iter.any(|x| x.name == "Plugin.Install") => false,
+      "/api/plugin/uninstall" if !perm_iter.any(|x| x.name == "Plugin.Uninstall") => false,
+      "/api/plugin/enable" | "/api/plugin/disable"
+        if !perm_iter.any(|x| x.name == "Plugin.Manage") =>
+      {
+        false
+      }
+
+      "/api/metadata/query" if !perm_iter.any(|x| x.name == "Metadata.View") => false,
+      "/api/user/delete" if !perm_iter.any(|x| x.name == "User.Delete") => false,
+      "/api/user/signUp" if !perm_iter.any(|x| x.name == "User.Create") => false,
+      "/api/user/link/role/add" if !perm_iter.any(|x| x.name == "User.ManageRoles") => false,
+      "/api/tag/add" | "/api/tag/group/add" | "/api/tag/group/delete"
+        if !perm_iter.any(|x| x.name == "Tag.Manage") =>
+      {
+        false
+      }
+      s if s.starts_with("/api/acl/role") && !perm_iter.any(|x| x.name == "User.ManageRoles") => {
+        false
+      }
+      s if s.starts_with("/api/acl/permission")
+        && !perm_iter.any(|x| x.name == "User.ManagePerms") =>
+      {
+        false
+      }
+      s if s.starts_with("/api/scanner") && !perm_iter.any(|x| x.name == "Library.Scan") => false,
+      _ => true,
+    }
+  }
+
   pub async fn check_resource_access(
     &self,
     token: Option<HeaderValue>,
     path: String,
     method: Method,
     db: Arc<DatabaseConnection>,
-  ) -> Result<(), AuthError> {
+  ) -> Result<RequestUser, AuthError> {
     log::debug!("check resource access token: {token:?}");
 
     let is_first_boot = Configuration::get_global_configuration()
       .state
-      .is_first_boot.load(Ordering::Relaxed);
+      .is_first_boot
+      .load(Ordering::Relaxed);
+
     let is_white_listed = match ((&method, &path[..])) {
       (&Method::OPTIONS, _) => true,
       (_, p) if !p.starts_with("/api") || p.starts_with("/api-docs") => true,
@@ -72,40 +118,53 @@ impl PolicyService {
     };
 
     if is_white_listed {
-      Ok(())
+      Ok(Arc::new(RequestUserInner {
+        uid: None,
+        roles: vec!["Anonymous".to_string()],
+        permissions: vec![],
+      }))
     } else if let Some(token) = token {
-      //TODO Don't use unwarp()
-      match auth::verify_and_decode_jwt(token.to_str().unwrap(), auth::get_jwt_secret_key()) {
+      let Ok(token) = token.to_str() else {
+        log::error!(
+          "Failed to convert auth token `HeaderValue` to `String`: invalid utf-8 or non-ascii characters"
+        );
+        return Err(AuthError::InternalError("Internal error".to_string()));
+      };
+
+      match auth::verify_and_decode_jwt(token, auth::get_jwt_secret_key()) {
         Ok(claims) => {
-          let uid: u64 = match claims.sub.parse() {
-            Ok(uid) => uid,
-            Err(_err) => {
-              return Err(AuthError::Unauthorized("Invalid token".to_string()));
-            }
+          let Ok(uid): Result<u64, _> = claims.sub.parse() else {
+            log::error!(
+              "Failed to parse claims sub: expected integer, got '{}'",
+              claims.sub
+            );
+            return Err(AuthError::Unauthorized(token.to_string()));
           };
 
           log::info!("user: {uid} access api: {path}");
 
-          let permissions = PolicyService::get_permissions_by_user(uid, db).await;
-          // TODO check permission
-          /*
-          match path {
-            path if path.starts_with("/api/user") => {
-              todo!()
-            }
-            path if path.starts_with("/api/plugin") => {
-              todo!()
-            }
-            path if path.starts_with("/api/system") => {
-              todo!()
-            }
-            _ => todo!(),
-          }
-          */
+          let roles = match PolicyService::get_roles_by_user(uid, db.clone()).await {
+            Ok(role) => role,
+            Err(err) => return Err(AuthError::InternalError("Internal error".to_string())),
+          };
+          let permissions = match PolicyService::get_permissions_by_user(uid, db).await {
+            Ok(permissions) => permissions,
+            Err(err) => return Err(AuthError::InternalError("Internal error".to_string())),
+          };
 
-          Ok(())
+          let perm_check = Self::check_permissions(&path[..], &permissions);
+
+          if perm_check {
+            Ok(Arc::new(RequestUserInner {
+              uid: Some(uid),
+              roles: roles.iter().map(|x| x.name.clone()).collect(),
+              permissions: permissions.iter().map(|x| x.name.clone()).collect(),
+            }))
+          } else {
+            Err(AuthError::Forbidden)
+          }
         }
-        Err(_) => Err(AuthError::Unauthorized(String::default())),
+        Err(_) => Err(AuthError::Unauthorized(token.to_string())),
       }
     } else {
       Err(AuthError::Unauthorized(String::default()))
@@ -224,10 +283,11 @@ impl PolicyService {
       )
       .filter(roles_related_permissions::Column::Rid.eq(rid));
 
-    match select.all(db.as_ref()).await {
-      Ok(permissions) => Ok(permissions),
-      Err(err) => Err(AclError::InternalError("Database error".to_string())),
-    }
+    select
+      .all(db.as_ref())
+      .await
+      .inspect_err(|err| log::error!("{err}"))
+      .map_err(|_err| AclError::InternalError("Database error".to_string()))
   }
 
   pub async fn get_permissions_by_user(
@@ -248,10 +308,11 @@ impl PolicyService {
         roles::Relation::UsersRelatedRoles.def(),
       )
       .filter(users_related_roles::Column::Uid.eq(uid));
-    match select.all(db.as_ref()).await {
-      Ok(permissions) => Ok(permissions),
-      Err(err) => Err(AclError::InternalError("Database error".to_string())),
-    }
+    select
+      .all(db.as_ref())
+      .await
+      .inspect_err(|err| log::error!("{err}"))
+      .map_err(|_err| AclError::InternalError("Database error".to_string()))
   }
 
   pub async fn add_permission_for_role(

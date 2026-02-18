@@ -1,20 +1,31 @@
-use std::future::{Ready, ready};
+use std::{
+  future::{Ready, ready},
+  rc::Rc,
+  sync::Arc,
+};
 
 use actix_web::{
-  Error,
+  Error, HttpMessage,
   dev::{Service, ServiceRequest, ServiceResponse, Transform, forward_ready},
   web::Data,
 };
 use futures_util::future::LocalBoxFuture;
 use sea_orm::DatabaseConnection;
 
-use crate::user::security::policy_service::PolicyService;
+use crate::user::security::policy_service::{AuthError, PolicyService};
 
+#[derive(Clone, Debug)]
+pub struct RequestUserInner {
+  pub uid: Option<u64>,
+  pub roles: Vec<String>,
+  pub permissions: Vec<String>,
+}
+pub type RequestUser = Arc<RequestUserInner>;
 pub struct TokenAuth;
 
 impl<S, B> Transform<S, ServiceRequest> for TokenAuth
 where
-  S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
+  S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
   S::Future: 'static,
   B: 'static,
 {
@@ -25,17 +36,19 @@ where
   type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
   fn new_transform(&self, service: S) -> Self::Future {
-    ready(Ok(TokenAuthMiddleware { service }))
+    ready(Ok(TokenAuthMiddleware {
+      service: Rc::new(service),
+    }))
   }
 }
 
 pub struct TokenAuthMiddleware<S> {
-  service: S,
+  service: Rc<S>,
 }
 
 impl<S, B> Service<ServiceRequest> for TokenAuthMiddleware<S>
 where
-  S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
+  S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
   S::Future: 'static,
   B: 'static,
 {
@@ -51,19 +64,33 @@ where
     let path = req.path().to_string();
     let method = req.method().clone();
     let token = req.headers().get("Authorization").cloned();
-
-    let fut = self.service.call(req);
+    let srv = self.service.clone();
 
     Box::pin(async move {
-      if let Err(error) = auth_service
+      match auth_service
         .check_resource_access(token, path, method, db.clone().into_inner())
         .await
       {
-        Err(actix_web::error::ErrorUnauthorized(format!("{error}")))
-      } else {
-        let res = fut.await?;
+        Ok(req_user) => {
+          req.extensions_mut().insert(req_user);
+          let fut = srv.call(req);
+          let res = fut.await?;
 
-        Ok(res)
+          Ok(res)
+        }
+        Err(error) => {
+          let msg = format!("{error}");
+          let error = match error {
+            AuthError::Unauthorized(..) | AuthError::TokenExpired(..) => {
+              actix_web::error::ErrorUnauthorized(msg)
+            }
+            AuthError::Forbidden => actix_web::error::ErrorForbidden(msg),
+            AuthError::MissingData => actix_web::error::ErrorBadRequest(msg),
+            AuthError::InvalidRole => actix_web::error::ErrorForbidden(msg),
+            AuthError::InternalError(..) => actix_web::error::ErrorInternalServerError(msg),
+          };
+          Err(error)
+        }
       }
     })
   }

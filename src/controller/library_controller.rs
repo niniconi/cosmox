@@ -7,10 +7,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::{
-  entities::types,
-  into_message, into_message_page,
-  services::librarys_service,
-  utils::message::{Message, MessagePayload},
+  entities::types, into_message, into_message_page, services::librarys_service, user::security::auth_middleware::RequestUser, utils::message::{Message, MessagePayload}
 };
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -93,12 +90,14 @@ pub async fn modify() -> impl Responder {
 #[post("add")]
 pub async fn add(
   body: web::Json<LibraryAddRequest>,
+  user: web::ReqData<RequestUser>,
   db: web::Data<DatabaseConnection>,
 ) -> impl Responder {
   into_message!(
     librarys_service::create_library_with_tags_and_paths(
       Arc::new(body.into_inner()),
       db.into_inner(),
+      user.into_inner()
     )
     .await
   )
