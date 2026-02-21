@@ -36,6 +36,7 @@ impl MigrationTrait for Migration {
               .big_unsigned()
               .null(),
           )
+          .col(ColumnDef::new(Resources::Cover).big_unsigned().null())
           .foreign_key(
             ForeignKey::create()
               .name("fk-resources-lid")
@@ -51,6 +52,14 @@ impl MigrationTrait for Migration {
               .to(MetadataIndexes::Table, MetadataIndexes::Mid)
               .on_delete(ForeignKeyAction::Restrict)
               .on_update(ForeignKeyAction::Restrict),
+          )
+          .foreign_key(
+            ForeignKey::create()
+              .name("fk-resources-cover")
+              .from(Resources::Table, Resources::Cover)
+              .to(PathMappings::Table, PathMappings::Pmid)
+              .on_delete(ForeignKeyAction::Cascade)
+              .on_update(ForeignKeyAction::Cascade),
           )
           .to_owned(),
       )
@@ -74,6 +83,7 @@ enum Resources {
   CreateDatetime,
   LastUpdateDatetime,
   MetadataIndex,
+  Cover,
 }
 
 #[derive(DeriveIden)]
@@ -86,4 +96,10 @@ enum Librarys {
 enum MetadataIndexes {
   Table,
   Mid,
+}
+
+#[derive(DeriveIden)]
+enum PathMappings {
+  Table,
+  Pmid,
 }

@@ -45,6 +45,7 @@ pub async fn add_resource_by_metadata(
     create_datetime: Set(current_datetime),
     last_update_datetime: Set(current_datetime),
     lid: Set(Some(lid)),
+    cover: Set(metadata.cover_file_map_id),
     ..Default::default()
   };
 

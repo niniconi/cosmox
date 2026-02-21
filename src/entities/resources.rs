@@ -15,6 +15,7 @@ pub struct Model {
   pub create_datetime: DateTime,
   pub last_update_datetime: DateTime,
   pub metadata_index: Option<u64>,
+  pub cover: Option<u64>,
   #[sea_orm(
     belongs_to,
     from = "lid",
@@ -31,6 +32,14 @@ pub struct Model {
     on_delete = "Restrict"
   )]
   pub metadata_indexes: HasOne<super::metadata_indexes::Entity>,
+  #[sea_orm(
+    belongs_to,
+    from = "cover",
+    to = "pmid",
+    on_update = "Cascade",
+    on_delete = "Cascade"
+  )]
+  pub path_mappings: HasOne<super::path_mappings::Entity>,
   #[sea_orm(has_many)]
   pub resources_related_tags: HasMany<super::resources_related_tags::Entity>,
 }

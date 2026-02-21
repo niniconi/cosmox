@@ -12,6 +12,8 @@ pub struct Model {
   pub path: String,
   pub mime_type: String,
   #[sea_orm(has_many)]
+  pub resources: HasMany<super::resources::Entity>,
+  #[sea_orm(has_many)]
   pub users: HasMany<super::users::Entity>,
 }
 
