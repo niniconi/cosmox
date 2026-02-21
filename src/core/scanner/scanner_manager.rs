@@ -8,7 +8,10 @@ use std::{
 };
 
 use futures::future::{join_all, try_join_all};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{
+  ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+};
+use tracing::instrument;
 use url::Url;
 use wasmtime::component::Resource;
 
@@ -26,7 +29,7 @@ use crate::{
     },
     scanner::controller::scanner_controller::ScannerError,
   },
-  entities::{library_paths, librarys},
+  entities::{library_paths, librarys, metadata_indexes},
   services::{resource_service, tag_service},
 };
 use cosmox_api::metadata::{Metadata, MetadataType};
@@ -258,19 +261,13 @@ pub async fn store_metadata(
     context: ScannerContext,
     db: Arc<DatabaseConnection>,
   ) -> Pin<Box<dyn Future<Output = Result<(), ScannerError>>>> {
-    let rid = metadata.lock().unwrap().rid;
-    let path = path.join(rid.to_string());
     let (path_mapping, tags) = context;
-    let metadata_file_path = path.join(".metadata");
-    if !path.exists() {
-      fs::create_dir_all(&path);
-    }
 
     Box::pin(async move {
-      let rid = metadata.lock().unwrap().rid;
+      let tmp_rid = metadata.lock().unwrap().rid;
       let mut inserted_tags: Vec<u64> = Vec::new();
 
-      if let Some(path_mappings) = path_mapping.get(&rid) {
+      if let Some(path_mappings) = path_mapping.get(&tmp_rid) {
         let insert_path_mapping_futures = path_mappings
           .iter()
           .map(|(path_mapping, url)| {
@@ -287,7 +284,7 @@ pub async fn store_metadata(
           });
       }
 
-      if let Some(tags) = tags.get(&rid) {
+      if let Some(tags) = tags.get(&tmp_rid) {
         let insesrt_tag_futures = tags
           .iter()
           .map(|(group_label, label)| store_tag(group_label, label, db.clone()))
@@ -307,16 +304,19 @@ pub async fn store_metadata(
           .collect::<Vec<_>>();
       }
 
-      let rid = resource_service::add_resource_by_metadata(
-        lid,
-        &metadata.lock().unwrap(),
-        db.clone(),
-      )
-      .await
-      .map_err(|_err| ScannerError::InternalError("Database error".to_string()))?;
+      let rid =
+        resource_service::add_resource_by_metadata(lid, &metadata.lock().unwrap(), db.clone())
+          .await
+          .map_err(|_err| ScannerError::InternalError("Database error".to_string()))?;
 
       if !inserted_tags.is_empty() {
         let _ = resource_service::add_tags_for_resource(rid, inserted_tags, db.clone()).await;
+      }
+
+      let path = path.join(rid.to_string());
+      let metadata_file_path = path.join(".metadata");
+      if !path.exists() {
+        fs::create_dir_all(&path);
       }
 
       let file = File::create(metadata_file_path).unwrap();
@@ -325,6 +325,26 @@ pub async fn store_metadata(
       let mut metadata = metadata.lock().unwrap();
       metadata.rid = rid;
       metadata.encode_no_child_into_std_write(&mut writer);
+
+      let metadata_store_path: &String = &Configuration::get_global_configuration()
+        .cosmox
+        .scanner
+        .metadata_path;
+
+      match path.strip_prefix(metadata_store_path) {
+        Ok(path) => {
+          let metadata_relative_path = path.to_string_lossy().into_owned();
+          let metadata_index = metadata_indexes::ActiveModel {
+            path: Set(metadata_relative_path),
+            mid: Set(rid),
+          };
+          metadata_index.insert(db.as_ref()).await;
+        }
+        Err(err) => {
+          log::warn!("Can't insert metadata_index to database.");
+          log::error!("{err}");
+        }
+      }
 
       let inner_futures = metadata
         .sub_metadatas
@@ -399,7 +419,7 @@ async fn store_path_mapping(
   url: &Url,
   db: Arc<DatabaseConnection>,
 ) -> Result<(), ScannerError> {
-  log::debug!("insert {:?}", "???");
+  log::debug!("Insert url:{url:?} into database");
 
   let pmid = file_service::push_item_link(url.clone(), db.clone())
     .await
