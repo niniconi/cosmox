@@ -25,7 +25,7 @@ use core::{
 };
 
 use crate::{
-  controller::init,
+  controller::{init, search_controller},
   core::{plugin::plugin_manager::PluginManager, scanner::controller::metadata_controller},
   user::{
     acl_controller,
@@ -142,6 +142,7 @@ async fn main() -> std::io::Result<()> {
       .service(
         scope::scope("/api")
           .service(init::initialize)
+          .service(search_controller::search)
           .service(
             scope::scope("/system")
               .service(system_controller::info)

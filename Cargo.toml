@@ -59,6 +59,7 @@ bincode = "2.0.1"
 url = "2.5.7"
 actix-ws = "0.3.0"
 rand = "0.9.2"
+serde_qs = { version = "1.0.0", features = ["actix4"] }
 
 [dev-dependencies]
 sqlx-cli = { version = "0.8.6", features = ["mysql"] }
