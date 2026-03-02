@@ -63,19 +63,19 @@ pub struct ResourceAddTagRequest {
 }
 
 #[auto_webapi_doc]
-#[get("{rid}")]
+#[get("/{rid}")]
 pub async fn get(rid: web::Path<u64>, db: web::Data<DatabaseConnection>) -> impl Responder {
   into_message!(resource_service::get_resource(*rid, db.into_inner()).await)
 }
 
 #[auto_webapi_doc]
-#[get("add")]
+#[get("/add")]
 pub async fn add() -> impl Responder {
   HttpResponse::NotImplemented().body("Not implemented add api")
 }
 
 #[auto_webapi_doc]
-#[delete("delete")]
+#[delete("/delete")]
 pub async fn delete(
   rid: web::Query<ResourceDeleteRequest>,
   db: web::Data<DatabaseConnection>,
@@ -84,7 +84,7 @@ pub async fn delete(
 }
 
 #[auto_webapi_doc]
-#[get("query")]
+#[get("/query")]
 pub async fn query(
   params: web::Query<ResourceQueryRequest>,
   db: web::Data<DatabaseConnection>,
@@ -93,13 +93,13 @@ pub async fn query(
 }
 
 #[auto_webapi_doc]
-#[get("{rid}/metadata")]
+#[get("/{rid}/metadata")]
 pub async fn get_metadata() -> impl Responder {
   HttpResponse::NotImplemented().body("Not implemented {rid}/metadata api")
 }
 
 #[auto_webapi_doc]
-#[post("{rid}/tag/add")]
+#[post("/{rid}/tag/add")]
 pub async fn add_tag(
   rid: web::Path<u64>,
   params: web::Json<ResourceAddTagRequest>,

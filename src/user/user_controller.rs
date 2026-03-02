@@ -213,7 +213,7 @@ pub fn validate_userident(ident: &UserLoginIdent) -> Result<(), ValidationError>
 ///
 /// Create a new user
 #[auto_webapi_doc]
-#[post("signUp")]
+#[post("/signUp")]
 pub async fn sign_up(
   payload: web::Json<UserSignUpRequest>,
   db: web::Data<DatabaseConnection>,
@@ -227,14 +227,14 @@ pub async fn sign_up(
 
 /// Delete user
 #[auto_webapi_doc]
-#[delete("delete")]
+#[delete("/delete")]
 pub async fn delete(uid: web::Query<u64>, db: web::Data<DatabaseConnection>) -> impl Responder {
   into_message!(user_service::delete(*uid, db.into_inner()).await)
 }
 
 /// Query User
 #[auto_webapi_doc]
-#[get("query")]
+#[get("/query")]
 pub async fn query(
   params: web::Query<UserQueryRequest>,
   db: web::Data<DatabaseConnection>,
@@ -246,7 +246,7 @@ pub async fn query(
 ///
 /// get user entity by uid
 #[auto_webapi_doc]
-#[get("{uid}")]
+#[get("/{uid}")]
 pub async fn get(uid: web::Path<u64>, db: web::Data<DatabaseConnection>) -> impl Responder {
   into_message!(user_service::get_user(*uid, db.into_inner()).await)
 }
@@ -255,7 +255,7 @@ pub async fn get(uid: web::Path<u64>, db: web::Data<DatabaseConnection>) -> impl
 ///
 /// Login by username or email
 #[auto_webapi_doc]
-#[post("login")]
+#[post("/login")]
 pub async fn login(
   payload: web::Json<UserLoginRequest>,
   db: web::Data<DatabaseConnection>,
@@ -271,7 +271,7 @@ pub async fn login(
 ///
 /// upload a small picture as your account's avatar
 #[auto_webapi_doc]
-#[post("{uid}/upload/avatar")]
+#[post("/{uid}/upload/avatar")]
 pub async fn upload_avatar(
   uid: web::Path<u64>,
   payload: Payload,
@@ -281,7 +281,7 @@ pub async fn upload_avatar(
 }
 
 #[auto_webapi_doc]
-#[post("link/role/add")]
+#[post("/link/role/add")]
 pub async fn role_add() -> impl Responder {
   HttpResponse::NotImplemented().body("Not implemented link/role/add api")
 }

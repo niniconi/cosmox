@@ -27,7 +27,7 @@ struct InitializeConfig {
 }
 
 #[auto_webapi_doc]
-#[post("initialize")]
+#[post("/initialize")]
 pub async fn initialize(
   initialize_config: web::Json<InitializeConfig>,
   db: web::Data<DatabaseConnection>,

@@ -56,7 +56,7 @@ pub enum SystemError {
 }
 
 #[auto_webapi_doc]
-#[get("info")]
+#[get("/info")]
 pub async fn info() -> impl Responder {
   // let sys = System::new_all();
   let info = SystemInfo {
@@ -73,13 +73,13 @@ pub async fn info() -> impl Responder {
 
 /// Restart server
 #[auto_webapi_doc]
-#[get("restart")]
+#[get("/restart")]
 pub async fn restart() -> impl Responder {
   HttpResponse::NotImplemented().body("Not implemented restart api")
 }
 
 #[auto_webapi_doc]
-#[get("shutdown")]
+#[get("/shutdown")]
 pub async fn shutdown() -> impl Responder {
   exit(0);
 
@@ -88,7 +88,7 @@ pub async fn shutdown() -> impl Responder {
 }
 
 #[auto_webapi_doc]
-#[get("about.md")]
+#[get("/about.md")]
 pub async fn about() -> impl Responder {
   let mut readme = match File::open("./README.md") {
     Ok(file) => file,
@@ -106,7 +106,7 @@ pub async fn about() -> impl Responder {
 }
 
 #[auto_webapi_doc]
-#[get("system.log")]
+#[get("/system.log")]
 pub async fn log() -> impl Responder {
   let log_path = &Configuration::get_global_configuration().cosmox.log.path;
   let log = fs::read_to_string(log_path);
@@ -114,7 +114,7 @@ pub async fn log() -> impl Responder {
 }
 
 #[auto_webapi_doc]
-#[delete("delete/all")]
+#[delete("/delete/all")]
 pub async fn delete_all() -> impl Responder {
   HttpResponse::NotImplemented().body("Not implemented delete/all api")
 }

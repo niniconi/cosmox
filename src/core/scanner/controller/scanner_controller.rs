@@ -62,7 +62,7 @@ static SCANNER_STATE: LazyLock<RwLock<ScannerStatus>> =
 /// Scan library by id
 /// TODO web::block can't not run as expected.
 #[auto_webapi_doc]
-#[get("scan/{lid}")]
+#[get("/scan/{lid}")]
 pub async fn scan(
   lid: web::Path<u64>,
   db: web::Data<DatabaseConnection>,
@@ -91,7 +91,7 @@ pub async fn scan(
 
 /// Scan all libraries
 #[auto_webapi_doc]
-#[get("scan/all")]
+#[get("/scan/all")]
 pub async fn scan_all(db: web::Data<DatabaseConnection>) -> Result<impl Responder, ScannerError> {
   let db = db.into_inner();
   let context = scanner_manager::prepare_context_information(
@@ -124,7 +124,7 @@ pub async fn scan_all(db: web::Data<DatabaseConnection>) -> Result<impl Responde
 }
 
 #[auto_webapi_doc]
-#[get("add/task")]
+#[get("/add/task")]
 pub async fn add_task() -> Result<impl Responder, ScannerError> {
   Ok(HttpResponse::NotImplemented().body("Add task api is not yet implemented."))
 }
@@ -132,7 +132,7 @@ pub async fn add_task() -> Result<impl Responder, ScannerError> {
 /// get status of scanner
 ///
 #[auto_webapi_doc]
-#[get("status")]
+#[get("/status")]
 pub async fn processed() -> Result<impl Responder, ScannerError> {
   Ok(HttpResponse::NotImplemented().body("Get processed api is not yet implemented."))
 }
@@ -140,7 +140,7 @@ pub async fn processed() -> Result<impl Responder, ScannerError> {
 /// get information of scanner
 ///
 #[auto_webapi_doc]
-#[post("info")]
+#[post("/info")]
 pub async fn info() -> Result<impl Responder, ScannerError> {
   Ok(HttpResponse::NotImplemented().body("Get scanner info api is not yet implemented."))
 }

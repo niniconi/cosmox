@@ -24,8 +24,9 @@ reqwest = { version = "0.12.20", features = ["blocking", "json"] }
 scraper = "0.24.0"
 uuid = "1.17.0"
 validator = { version = "0.20.0", features = ["derive"] }
-utoipa = { version = "5.4.0", features = ["chrono"] }
-utoipa-swagger-ui = { version = "9.0.2", features = ["actix-web", "reqwest"] }
+utoipa = { version = "5.4.0", features = ["actix_extras", "chrono"] }
+utoipa-scalar = { version = "0.3", features = ["actix-web"] }
+utoipa-actix-web = "0.1.2"
 tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread", "net", "sync", "time"] }
 chrono = { version = "0.4.41", features = ["serde"] }
 clap = "4.5.40"

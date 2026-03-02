@@ -48,7 +48,7 @@ pub enum AclError {
 ///
 /// Create a new user
 #[auto_webapi_doc]
-#[post("role/add")]
+#[post("/role/add")]
 pub async fn add_role(
   body: web::Json<RoleAddRequest>,
   db: web::Data<DatabaseConnection>,
@@ -58,7 +58,7 @@ pub async fn add_role(
 
 /// Delete role
 #[auto_webapi_doc]
-#[delete("role/delete")]
+#[delete("/role/delete")]
 pub async fn delete_role(
   rid: web::Query<u64>,
   db: web::Data<DatabaseConnection>,
@@ -67,7 +67,7 @@ pub async fn delete_role(
 }
 
 #[auto_webapi_doc]
-#[post("permission/add")]
+#[post("/permission/add")]
 pub async fn add_permission(
   body: web::Json<PermissionAddRequest>,
   db: web::Data<DatabaseConnection>,
@@ -76,7 +76,7 @@ pub async fn add_permission(
 }
 
 #[auto_webapi_doc]
-#[delete("permission/delete")]
+#[delete("/permission/delete")]
 pub async fn delete_permission(
   pid: web::Query<u64>,
   db: web::Data<DatabaseConnection>,
@@ -85,7 +85,7 @@ pub async fn delete_permission(
 }
 
 #[auto_webapi_doc]
-#[post("role/link/permission/add")]
+#[post("/role/link/permission/add")]
 pub async fn add_permission_for_role(
   body: web::Json<RoleLinkPermissionAddRequest>,
   db: web::Data<DatabaseConnection>,
@@ -94,7 +94,7 @@ pub async fn add_permission_for_role(
 }
 
 #[auto_webapi_doc]
-#[get("query")]
+#[get("/query")]
 pub async fn query(db: web::Data<DatabaseConnection>) -> impl Responder {
   HttpResponse::NotImplemented().body("NotImplemented")
 }

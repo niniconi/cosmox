@@ -61,7 +61,7 @@ pub enum PluginError {
 }
 
 #[auto_webapi_doc]
-#[post("install")]
+#[post("/install")]
 pub async fn install_plugin(body: web::Json<InstallPluginParams>) -> impl Responder {
   HttpResponse::NotImplemented().body(format!(
     "Install plugin api is not yet implemented. payload = {body:#?}"
@@ -69,25 +69,25 @@ pub async fn install_plugin(body: web::Json<InstallPluginParams>) -> impl Respon
 }
 
 #[auto_webapi_doc]
-#[delete("uninstall")]
+#[delete("/uninstall")]
 pub async fn uninstall_plugin() -> impl Responder {
   HttpResponse::NotImplemented().body("Uninstall plugin api is not yet implemented.")
 }
 
 #[auto_webapi_doc]
-#[delete("enable")]
+#[delete("/enable")]
 pub async fn enable_plugin() -> impl Responder {
   HttpResponse::NotImplemented().body("Enable plugin api is not yet implemented.")
 }
 
 #[auto_webapi_doc]
-#[delete("disable")]
+#[delete("/disable")]
 pub async fn disable_plugin() -> impl Responder {
   HttpResponse::NotImplemented().body("Disable plugin api is not yet implemented.")
 }
 
 #[auto_webapi_doc]
-#[get("info")]
+#[get("/info")]
 pub async fn info() -> impl Responder {
   #[cfg(debug_assertions)]
   return HttpResponse::Ok().body(format!("{:#?}", PluginManager::get_plugin_manager()));

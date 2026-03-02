@@ -63,13 +63,13 @@ pub enum LibraryError {
 }
 
 #[auto_webapi_doc]
-#[get("{lid}")]
+#[get("/{lid}")]
 pub async fn get(param: web::Path<u64>, db: web::Data<DatabaseConnection>) -> impl Responder {
   into_message!(librarys_service::get_library(param.into_inner(), db.into_inner()).await)
 }
 
 #[auto_webapi_doc]
-#[get("query")]
+#[get("/query")]
 pub async fn query(
   params: web::Query<LibraryQueryRequest>,
   db: web::Data<DatabaseConnection>,
@@ -78,7 +78,7 @@ pub async fn query(
 }
 
 #[auto_webapi_doc]
-#[post("{lid}/modify")]
+#[post("/{lid}/modify")]
 pub async fn modify() -> impl Responder {
   HttpResponse::NotImplemented().body("Not implemented modify api")
 }
@@ -87,7 +87,7 @@ pub async fn modify() -> impl Responder {
 ///
 /// add library with tags and path in disk.
 #[auto_webapi_doc]
-#[post("add")]
+#[post("/add")]
 pub async fn add(
   body: web::Json<LibraryAddRequest>,
   user: web::ReqData<RequestUser>,
@@ -108,14 +108,14 @@ pub async fn add(
 /// delete the entity in database table library.
 /// delete the metadata information in disk (Option)
 #[auto_webapi_doc]
-#[delete("delete")]
+#[delete("/delete")]
 pub async fn delete() -> impl Responder {
   HttpResponse::NotImplemented().body("Not implemented delete api")
 }
 
 /// Returns all selectable Types
 #[auto_webapi_doc]
-#[get("type/all")]
+#[get("/type/all")]
 pub async fn get_all_type(db: web::Data<DatabaseConnection>) -> impl Responder {
   match types::Entity::find().all(db.as_ref()).await {
     Ok(types) => HttpResponse::Ok().json(Message {

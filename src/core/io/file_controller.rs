@@ -72,7 +72,7 @@ pub enum FileError {
 }
 
 #[auto_webapi_doc]
-#[post("push")]
+#[post("/push")]
 pub async fn push(
   request: HttpRequest,
   payload: Payload,
@@ -103,7 +103,7 @@ pub async fn push(
 
 /// get item from server
 #[auto_webapi_doc]
-#[get("{id}/pull")]
+#[get("/{id}/pull")]
 pub async fn pull(
   file_id: web::Path<u64>,
   db: web::Data<DatabaseConnection>,

@@ -46,7 +46,7 @@ pub enum TagError {
 }
 
 #[auto_webapi_doc]
-#[get("{id}")]
+#[get("/{id}")]
 pub async fn get(
   tid: web::Path<u64>,
   db: web::Data<DatabaseConnection>,
@@ -55,31 +55,31 @@ pub async fn get(
 }
 
 #[auto_webapi_doc]
-#[get("group/{id}")]
+#[get("/group/{id}")]
 pub async fn group_get(params: web::Path<String>) -> impl Responder {
   HttpResponse::NotImplemented().body("Not implemented group/{id} api")
 }
 
 #[auto_webapi_doc]
-#[post("add")]
+#[post("/add")]
 pub async fn add(tid: web::Path<u64>, db: web::Data<DatabaseConnection>) -> impl Responder {
   HttpResponse::NotImplemented().body("Not implemented add api")
 }
 
 #[auto_webapi_doc]
-#[post("group/add")]
+#[post("/group/add")]
 pub async fn group_add() -> impl Responder {
   HttpResponse::NotImplemented().body("Not implemented group/add api")
 }
 
 #[auto_webapi_doc]
-#[delete("group/delete")]
+#[delete("/group/delete")]
 pub async fn group_delete() -> impl Responder {
   HttpResponse::NotImplemented().body("Not implemented group/del api")
 }
 
 #[auto_webapi_doc]
-#[get("query")]
+#[get("/query")]
 pub async fn query(
   params: web::Query<TagQueryRequest>,
   db: web::Data<DatabaseConnection>,
@@ -88,13 +88,13 @@ pub async fn query(
 }
 
 #[auto_webapi_doc]
-#[get("group/query")]
+#[get("/group/query")]
 pub async fn group_query() -> impl Responder {
   HttpResponse::NotImplemented().body("Not implemented group/query api")
 }
 
 #[auto_webapi_doc]
-#[get("all/query")]
+#[get("/all/query")]
 pub async fn all_query() -> impl Responder {
   HttpResponse::NotImplemented().body("Not implemented all/query api")
 }

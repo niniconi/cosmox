@@ -64,27 +64,3 @@ pub fn count_format_args_in_string(format_string: &str) -> Result<usize, String>
 
   Ok(total_args)
 }
-
-pub fn is_primitive_type(path: &str) -> bool {
-  matches!(
-    path,
-    "u8"
-      | "u16"
-      | "u32"
-      | "u64"
-      | "u128"
-      | "usize"
-      | "i8"
-      | "i16"
-      | "i32"
-      | "i64"
-      | "i128"
-      | "isize"
-      | "f32"
-      | "f64"
-      | "bool"
-      | "char"
-      | "str"
-      | "String"
-  )
-}

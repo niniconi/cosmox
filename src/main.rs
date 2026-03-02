@@ -5,7 +5,7 @@ use core::io::file_controller;
 use std::{env, time::Duration};
 
 use actix_cors::Cors;
-use actix_web::{App, HttpServer, http::header, web};
+use actix_web::{App, HttpServer, get, http::header, web};
 use configuration::Configuration;
 use controller::{
   library_controller, resource_controller, system_controller, tag_controller, ui_controller,
@@ -15,8 +15,9 @@ use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use user::user_controller;
-use utoipa::OpenApi;
-use utoipa_swagger_ui::SwaggerUi;
+use utoipa::{OpenApi, openapi};
+use utoipa_actix_web::{AppExt, scope};
+use utoipa_scalar::{Scalar, Servable};
 
 use core::{
   plugin::plugin_controller,
@@ -41,61 +42,6 @@ pub mod user;
 pub mod utils;
 
 #[derive(OpenApi)]
-#[openapi(paths(
-  system_controller::info,
-  system_controller::restart,
-  system_controller::shutdown,
-  system_controller::about,
-  system_controller::log,
-  library_controller::get,
-  library_controller::modify,
-  library_controller::add,
-  library_controller::delete,
-  library_controller::query,
-  library_controller::get_all_type,
-  tag_controller::get,
-  tag_controller::group_get,
-  tag_controller::add,
-  tag_controller::group_add,
-  tag_controller::group_delete,
-  tag_controller::query,
-  tag_controller::group_query,
-  tag_controller::all_query,
-  resource_controller::get,
-  resource_controller::add,
-  resource_controller::delete,
-  resource_controller::get_metadata,
-  resource_controller::query,
-  resource_controller::add_tag,
-  user_controller::get,
-  user_controller::login,
-  user_controller::sign_up,
-  user_controller::delete,
-  user_controller::query,
-  user_controller::upload_avatar,
-  user_controller::role_add,
-  acl_controller::add_role,
-  acl_controller::delete_role,
-  acl_controller::add_permission,
-  acl_controller::delete_permission,
-  acl_controller::add_permission_for_role,
-  file_controller::pull,
-  file_controller::push,
-  scanner_controller::scan,
-  scanner_controller::scan_all,
-  scanner_controller::processed,
-  scanner_controller::add_task,
-  scanner_controller::info,
-  path_tree_scanner::get_sub_path,
-  plugin_controller::install_plugin,
-  plugin_controller::uninstall_plugin,
-  plugin_controller::enable_plugin,
-  plugin_controller::disable_plugin,
-  plugin_controller::info,
-  metadata_controller::query,
-  metadata_controller::get,
-  ui_controller::get_core,
-))]
 struct ApiDoc;
 
 #[actix_web::main]
@@ -120,8 +66,6 @@ async fn main() -> std::io::Result<()> {
     .with(tracing_subscriber::fmt::layer())
     .with(tracing_subscriber::fmt::layer().with_writer(non_blocking_appender))
     .init();
-
-  let openapi = ApiDoc::openapi();
 
   let database_url = format!(
     "mysql://{}:{}@{}:{}/{}",
@@ -186,17 +130,20 @@ async fn main() -> std::io::Result<()> {
         header::SERVER,
       ])
       .max_age(3600);
-    App::new()
+
+    let (app, api) = App::new()
       .app_data(db_connection_app_data.clone())
       .app_data(config_app_data.clone())
       .app_data(policy_service.clone())
       .wrap(cors)
       .wrap(TokenAuth)
+      .into_utoipa_app()
+      .openapi(ApiDoc::openapi())
       .service(
-        web::scope("api")
+        scope::scope("/api")
           .service(init::initialize)
           .service(
-            web::scope("system")
+            scope::scope("/system")
               .service(system_controller::info)
               .service(system_controller::restart)
               .service(system_controller::shutdown)
@@ -204,7 +151,7 @@ async fn main() -> std::io::Result<()> {
               .service(system_controller::log),
           )
           .service(
-            web::scope("library")
+            scope::scope("/library")
               .service(library_controller::modify)
               .service(library_controller::add)
               .service(library_controller::delete)
@@ -213,7 +160,7 @@ async fn main() -> std::io::Result<()> {
               .service(library_controller::get),
           )
           .service(
-            web::scope("tag")
+            scope::scope("/tag")
               .service(tag_controller::group_get)
               .service(tag_controller::add)
               .service(tag_controller::group_add)
@@ -224,7 +171,7 @@ async fn main() -> std::io::Result<()> {
               .service(tag_controller::get),
           )
           .service(
-            web::scope("resource")
+            scope::scope("/resource")
               .service(resource_controller::add)
               .service(resource_controller::delete)
               .service(resource_controller::get_metadata)
@@ -233,7 +180,7 @@ async fn main() -> std::io::Result<()> {
               .service(resource_controller::get),
           )
           .service(
-            web::scope("user")
+            scope::scope("/user")
               .service(user_controller::login)
               .service(user_controller::sign_up)
               .service(user_controller::delete)
@@ -242,7 +189,7 @@ async fn main() -> std::io::Result<()> {
               .service(user_controller::role_add)
               .service(user_controller::get)
               .service(
-                web::scope("acl")
+                utoipa_actix_web::scope::scope("/acl")
                   .service(acl_controller::add_role)
                   .service(acl_controller::delete_role)
                   .service(acl_controller::add_permission)
@@ -251,12 +198,12 @@ async fn main() -> std::io::Result<()> {
               ),
           )
           .service(
-            web::scope("item")
+            scope::scope("/item")
               .service(file_controller::pull)
               .service(file_controller::push),
           )
           .service(
-            web::scope("scanner")
+            scope::scope("/scanner")
               .service(scanner_controller::scan_all)
               .service(scanner_controller::scan)
               .service(scanner_controller::processed)
@@ -265,7 +212,7 @@ async fn main() -> std::io::Result<()> {
               .service(path_tree_scanner::get_sub_path),
           )
           .service(
-            web::scope("plugin")
+            scope::scope("/plugin")
               .service(plugin_controller::install_plugin)
               .service(plugin_controller::uninstall_plugin)
               .service(plugin_controller::enable_plugin)
@@ -273,13 +220,16 @@ async fn main() -> std::io::Result<()> {
               .service(plugin_controller::info),
           )
           .service(
-            web::scope("metadata")
+            scope::scope("/metadata")
               .service(metadata_controller::query)
               .service(metadata_controller::get),
           )
-          .service(web::scope("ui").service(ui_controller::get_core)),
+          .service(scope::scope("/ui").service(ui_controller::get_core)),
       )
-      .service(SwaggerUi::new("/swagger-ui/{_:.*}").url("/api-docs/openapi.json", openapi.clone()))
+      .split_for_parts();
+
+    app
+      .service(Scalar::with_url("/scalar", api))
       .service(actix_files::Files::new("/", "./static").index_file("index.html"))
   })
   .bind((server_host, server_port))?

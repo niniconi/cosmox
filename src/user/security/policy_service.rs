@@ -104,7 +104,7 @@ impl PolicyService {
 
     let is_white_listed = match ((&method, &path[..])) {
       (&Method::OPTIONS, _) => true,
-      (_, p) if !p.starts_with("/api") || p.starts_with("/api-docs") => true,
+      (_, p) if !p.starts_with("/api") => true,
       (&Method::POST, "/api/user/login") => true,
       (&Method::GET, "/api/system/info") if is_first_boot => true,
       (&Method::POST, "/api/initialize") => {

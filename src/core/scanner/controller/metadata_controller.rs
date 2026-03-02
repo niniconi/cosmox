@@ -28,14 +28,14 @@ pub enum MetadataError {
 }
 
 #[auto_webapi_doc]
-#[get("{rid}")]
+#[get("/{rid}")]
 pub async fn get(rid: web::Path<u64>, db: web::Data<DatabaseConnection>) -> impl Responder {
   HttpResponse::NotImplemented().body("Not implemented add api")
 }
 
 /// Query metadata from server
 #[auto_webapi_doc]
-#[get("query")]
+#[get("/query")]
 pub async fn query(
   query: web::Query<MetadataQueryRequest>,
   db: web::Data<DatabaseConnection>,
