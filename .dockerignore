@@ -1,0 +1,21 @@
+// Ignore everything
+*
+
+// Allow what is needed
+!.git
+
+!src
+!migration
+!cosmox-api
+!cosmox-macros
+!cosmox-plugin-pack
+!wit
+!static
+
+!build.rs
+!Cargo.lock
+!Cargo.toml
+!banner.txt
+!application.yaml
+!rustfmt.toml
+!rust-toolchain.toml
