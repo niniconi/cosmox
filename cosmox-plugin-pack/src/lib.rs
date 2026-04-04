@@ -10,6 +10,7 @@ use tar::Builder;
 use crate::cargo::CargoToml;
 
 mod cargo;
+mod metadata;
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct About {
@@ -22,6 +23,7 @@ pub struct About {
   pub permission: Option<Vec<String>>,
   pub url: Option<String>,
   pub dependencies: Option<Vec<String>>,
+  pub conflicts: Option<Vec<String>>,
 }
 
 pub enum PackFromProfile {
@@ -105,9 +107,14 @@ pub fn pack(src_path: &str, dst_path: &str, pack_profile: PackFromProfile) -> Re
   let repo_name = &cargo_package.name;
   let repo_description = &cargo_package.description;
   let repo_author = &cargo_package.authors.unwrap();
-  let repo_license = &cargo_package.license.unwrap();
+  let repo_license = &cargo_package.license.unwrap_or("custom".to_string());
   const WASM_TARGET_TRIPLE: &str = "wasm32-wasip2";
   let plugin_version = &cargo_package.version;
+  let (dependencies, conflicts) = if let Some(metadata) = &cargo_package.metadata {
+    (metadata.dependencies.clone(), metadata.conflicts.clone())
+  } else {
+    (None, None)
+  };
 
   let profile = match pack_profile {
     PackFromProfile::Debug => "debug",
@@ -117,7 +124,7 @@ pub fn pack(src_path: &str, dst_path: &str, pack_profile: PackFromProfile) -> Re
   let source_plugin_asset_dir = repo_dir.join("assets");
   let source_plugin_define_dir = repo_dir.join("defines");
 
-  let target_plugin_dir = PathBuf::from(dst_path).join(&profile);
+  let target_plugin_dir = PathBuf::from(dst_path).join(&profile).join(repo_name);
   let target_plugin_build_dir = target_plugin_dir.join("build");
   let target_plugin_wasm_dir = target_plugin_build_dir.join("wasm");
   let target_plugin_define_dir = target_plugin_build_dir.join("defines");
@@ -152,6 +159,8 @@ pub fn pack(src_path: &str, dst_path: &str, pack_profile: PackFromProfile) -> Re
     description: repo_description.clone(),
     license: repo_license.clone(),
     authors: repo_author.clone(),
+    dependencies: dependencies,
+    conflicts: conflicts,
     ..Default::default()
   };
 

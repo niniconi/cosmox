@@ -18,9 +18,8 @@ use crate::{
     Plugin, WasmComponent,
     plugin_lifecycle::plugin_wasm_lifecycle,
     plugin_loader::{
-      ComponentRunStates, CosmoxPluginData,
-      bindings,
-      load_builtin_plugins, load_external_plugins,
+      ComponentRunStates, CosmoxPluginData, bindings, finalize_dependency, load_builtin_plugins,
+      load_external_plugins,
     },
   },
   utils::default_constants::ascii_letters_number_separators,
@@ -36,7 +35,8 @@ pub struct PluginManager {
   pub plugin_enable_count: usize,
   pub plugin_count: usize,
 
-  pub plugins: HashMap<u64, Plugin>,
+  pub plugin_names: HashMap<String, u64>,
+  pub plugins: Vec<Option<Plugin>>,
 
   pub wasm_list: HashMap<u64, Arc<WasmComponent>>,
 
@@ -73,6 +73,9 @@ static PLUGIN_MANAGER: LazyLock<Mutex<PluginManager>> = LazyLock::new(|| {
 
   Mutex::new(PluginManager {
     engine: engine,
+    plugins: vec![None; u16::MAX as usize],
+    plugin_autoincrement: 0,
+    wasm_autoincrement: 0,
     ..Default::default()
   })
 });
@@ -98,6 +101,15 @@ impl PluginManager {
   fn _get_plugin_autoincrement(&mut self) -> u64 {
     self.plugin_autoincrement += 1;
     self.plugin_autoincrement
+  }
+
+  #[inline]
+  pub fn insert_plugin_name(name: String, id: u64) {
+    PLUGIN_MANAGER.lock().unwrap()._insert_plugin_name(name, id)
+  }
+
+  pub fn _insert_plugin_name(&mut self, name: String, id: u64) {
+    self.plugin_names.insert(name, id);
   }
 
   /// Generate a wasm_id from plugin manager
@@ -129,6 +141,7 @@ impl PluginManager {
 
       log::info!("initialized plugin manager");
     } // Leaving the life cycle of `plugin_manager`
+    finalize_dependency();
 
     // The lock of `plugin_manager` has been released
     // PluginManager::lifecycle_manager();
@@ -142,12 +155,21 @@ impl PluginManager {
 
   fn _start(&mut self, builtin_plugins: Vec<Plugin>, external_plugins: Vec<Plugin>) {
     self.plugin_count += builtin_plugins.len() + external_plugins.len();
+    if self.plugin_count as usize > u16::MAX as usize {
+      panic!(
+        "Plugin count overflow: current count is {}, but the limit is {}",
+        self.plugin_count,
+        u16::MAX
+      );
+    }
     for plugin in builtin_plugins {
-      self.plugins.insert(plugin.id(), plugin);
+      let id = plugin.id() as usize;
+      self.plugins[id] = Some(plugin);
     }
 
     for plugin in external_plugins {
-      self.plugins.insert(plugin.id(), plugin);
+      let id = plugin.id() as usize;
+      self.plugins[id] = Some(plugin);
     }
   }
 
@@ -167,7 +189,7 @@ impl PluginManager {
         bind_events: Mutex::new(Vec::with_capacity(32)),
         plugin_id: wasm_component.plugin_id,
         wasm_id: wasm_component.id,
-        name: wasm_component.name.clone()
+        name: wasm_component.name.clone(),
       },
     };
     Store::new(&engine, state)
@@ -201,7 +223,7 @@ impl PluginManager {
             bind_events: Mutex::new(Vec::with_capacity(32)),
             plugin_id: wasm_component.plugin_id,
             wasm_id: wasm_component.id,
-            name: wasm_component.name.clone()
+            name: wasm_component.name.clone(),
           },
         };
         Store::new(&engine, state)

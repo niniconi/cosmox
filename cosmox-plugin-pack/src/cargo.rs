@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::metadata::Metadata;
+
 /// Represents the root structure of the entire Cargo.toml file
 #[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
 #[serde(rename_all = "kebab-case")] // This is to enable mapping kebab-case fields in TOML to snake_case in Rust.
@@ -81,7 +83,7 @@ pub struct Package {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub default_run: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
-  pub metadata: Option<toml::Value>, // This is any TOML value, as metadata can be any structure.
+  pub metadata: Option<Metadata>,
 }
 
 /// [lib] part

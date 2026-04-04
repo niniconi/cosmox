@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use utoipa::{IntoParams, ToSchema};
 
-use crate::core::plugin::plugin_manager::PluginManager;
+use crate::core::plugin::{plugin_loader::PluginLoadError, plugin_manager::PluginManager};
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct InstallPluginParams {
@@ -18,7 +18,7 @@ pub struct PluginQueryRequest {}
 /// Errors related to plugin management and execution.
 #[derive(Debug, Error, ActixWebError)]
 pub enum PluginError {
-  #[error("Plugin '{0}' not found.")]
+  #[error("Plugin '{0}' not found in the registry or disk.")]
   #[code(404)]
   NotFound(String),
 
@@ -26,33 +26,29 @@ pub enum PluginError {
   #[code(403)]
   Unauthorized,
 
-  #[error("Plugin '{0}' is already installed.")]
-  #[code(409)]
-  AlreadyInstalled(String),
-
-  #[error("Plugin '{0}' failed to download from '{1}'.")]
-  #[code(504)]
-  DownloadTimeout(String, String),
-
-  #[error("Plugin '{0}' is not compatible with current system version '{1}'.")]
-  #[code(400)]
-  IncompatibleVersion(String, String),
-
-  #[error("Plugin '{0}' failed to load: {1}")]
-  #[code(500)]
-  LoadFailed(String, String),
-
-  #[error("Plugin execution failed for '{0}': {1}")]
-  #[code(500)]
-  ExecutionFailed(String, String),
-
   #[error("Plugin '{0}' is disabled.")]
   #[code(403)]
   Disabled(String),
 
-  #[error("Plugin registration failed due to missing manifest.")]
-  #[code(400)]
-  MissingManifest,
+  #[error("Plugin '{0}' is already installed.")]
+  #[code(409)]
+  AlreadyInstalled(String),
+
+  #[error("Plugin failed to load: {0}")]
+  #[code(500)]
+  LoadFailed(#[from] PluginLoadError),
+
+  #[error("Wasm instantiation failed for '{0}': {1}")]
+  #[code(500)]
+  WasmError(String, String),
+
+  #[error("IO error: {0}")]
+  #[code(500)]
+  IoError(#[from] std::io::Error),
+
+  #[error("Network error while downloading plugin '{0}': {1}")]
+  #[code(504)]
+  DownloadError(String, String),
 
   /// Indicates an unexpected server-side issue.
   #[error("Internal server error: {0}")]
