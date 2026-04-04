@@ -10,6 +10,7 @@ use configuration::Configuration;
 use controller::{
   library_controller, resource_controller, system_controller, tag_controller, ui_controller,
 };
+use log::LevelFilter;
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
@@ -85,7 +86,8 @@ async fn main() -> std::io::Result<()> {
       .connect_timeout(Duration::from_secs(database_options.connect_timeout))
       .acquire_timeout(Duration::from_secs(database_options.acquire_timeout))
       .idle_timeout(Duration::from_secs(database_options.idle_timeout))
-      .max_lifetime(Duration::from_secs(database_options.max_lifetime));
+      .max_lifetime(Duration::from_secs(database_options.max_lifetime))
+      .sqlx_logging_level(LevelFilter::Debug);
 
     Database::connect(database_opt).await.unwrap()
   } else {
