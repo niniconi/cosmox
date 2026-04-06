@@ -8,7 +8,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-anyhow = "1.0.99"
-bincode = "2.0.1"
 cosmox-macros = { workspace = true }
-serde = { version = "1.0.215", features = ["derive", "rc"] }
+anyhow = { workspace = true }
+serde = { workspace = true, features = ["derive", "rc"] }
+bincode = { workspace = true }

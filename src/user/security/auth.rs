@@ -8,7 +8,7 @@ use argon2::{
 use chrono::{Duration, Utc};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode, errors::Error as JwtError};
 use jsonwebtoken::{DecodingKey, Validation, decode};
-use rand::RngCore;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]

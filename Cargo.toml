@@ -9,73 +9,93 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-actix-web="4"
-actix-cors = "0.7.1"
-log = "0.4.22"
-tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
-sqlx = { version = "0.8.2", features = ["mysql", "macros", "runtime-tokio-rustls", "chrono", "uuid", "json"] }
-serde = "1.0.215"
-serde_json = "1"
-serde_yaml = "0.9.34"
-futures = "0.3"
-jsonwebtoken = { version = "10.2.0", features = ["aws_lc_rs"] }
-reqwest = { version = "0.12.20", features = ["blocking", "json"] }
-scraper = "0.24.0"
-uuid = "1.17.0"
-validator = { version = "0.20.0", features = ["derive"] }
-utoipa = { version = "5.4.0", features = ["actix_extras", "chrono"] }
-utoipa-scalar = { version = "0.3", features = ["actix-web"] }
-utoipa-actix-web = "0.1.2"
-tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread", "net", "sync", "time"] }
-chrono = { version = "0.4.41", features = ["serde"] }
-clap = "4.5.40"
-notify = "8.0.0"
-tokio-cron-scheduler = "0.15.1"
-config = "0.15.11"
-moka = { version = "0.12.10", features = ["future"] }
-thiserror = "2.0.12"
-anyhow = "1.0.98"
-casbin = "2.10.1"
-argon2 = "0.5.3"
-otp = "0.2.0"
-ffmpeg-next = "8.1.0"
-rand_core = { version = "0.9.3", features = ["std"] }
-actix-files = "0.6.6"
-sea-orm = { version = "2.0.0-rc", features = ["sqlx-mysql", "runtime-tokio-rustls", "macros"] }
-regex = "1.11.1"
-actix-multipart = "0.7.2"
-futures-util = "0.3.31"
-sysinfo = "0.37.2"
-wasmtime = { version = "39.0.1", features = ["async"] }
-wasmtime-wasi = { version = "39.0.1" }
-wasmtime-wasi-http = { version = "39.0.1" }
-tracing-appender = "0.2.3"
-cosmox-api = { path = "./cosmox-api" }
-cosmox-macros = { path = "./cosmox-macros" }
-migration = { path = "./migration" }
-lru = "0.16.0"
-bincode = "2.0.1"
-url = "2.5.7"
-actix-ws = "0.3.0"
-rand = "0.9.2"
-serde_qs = { version = "1.0.0", features = ["actix4"] }
+# web
+actix-web             = "4.13.0"
+actix-cors            = "0.7.1"
+actix-files           = "0.6.10"
+actix-multipart       = "0.7.2"
+actix-ws              = "0.4.0"
+utoipa                = { version = "5.4.0", default-features = false, features = ["actix_extras", "chrono"] }
+utoipa-scalar         = { version = "0.3.0", default-features = false, features = ["actix-web"] }
+utoipa-actix-web      = "0.1.2"
+
+# database
+sqlx                  = { version = "0.8.6", default-features = false, features = ["mysql", "macros", "runtime-tokio-rustls", "chrono", "uuid", "json"] }
+sea-orm               = { version = "2.0.0-rc", default-features = false, features = ["sqlx-mysql", "runtime-tokio-rustls", "macros"] }
+
+# log
+log                   = "0.4.22"
+tracing               = "0.1.41"
+tracing-subscriber    = { version = "0.3.19", features = ["env-filter", "smallvec", "fmt", "ansi", "tracing-log", "std"] }
+tracing-appender      = "0.2.3"
+
+# serialization
+serde                 = { workspace = true, features = ["alloc", "derive", "rc", "serde_derive", "std"] }
+serde_qs              = { version = "1.1.1", default-features = false, features = ["actix4"] }
+serde_json            = "1.0.149"
+serde_yaml            = "0.9.34"
+bincode               = { workspace = true }
+
+# async
+futures               = "0.3.32"
+futures-util          = "0.3.32"
+tokio                 = { version = "1.45.1", default-features = false, features = ["macros", "rt-multi-thread", "net", "sync", "time"] }
+tokio-cron-scheduler  = "0.15.1"
+
+# network
+reqwest               = { version = "0.13.2", default-features = false, features = ["rustls", "http2", "charset", "system-proxy", "blocking", "json"] }
+scraper               = "0.26.0"
+
+# authentication
+validator             = { version = "0.20.0", default-features = false, features = ["derive"] }
+jsonwebtoken          = { version = "10.2.0", default-features = false, features = ["aws_lc_rs"] }
+argon2                = "0.5.3"
+otp                   = "0.2.0"
+uuid                  = "1.17.0"
+
+rand                  = "0.10.0"
+
+chrono                = { version = "0.4.41", default-features = false, features = ["serde"] }
+clap                  = { workspace = true }
+notify                = "8.0.0"
+
+thiserror             = { workspace = true }
+anyhow                = { workspace = true }
+config                = "0.15.22"
+url                   = "2.5.8"
+regex                 = "1.12.3"
+
+# casbin              = "2.10.1"
+moka                  = { version = "0.12.10", default-features = false, features = ["future"] }
+lru                   = "0.16.3"
+ffmpeg-next           = "8.1.0"
+sysinfo               = "0.38.4"
+
+wasmtime              = { version = "39.0.1", features = ["async"] }
+wasmtime-wasi         = { version = "39.0.1" }
+wasmtime-wasi-http    = { version = "39.0.1" }
+
+cosmox-api            = { workspace = true }
+cosmox-macros         = { workspace = true }
+migration             = { workspace = true }
 
 [dev-dependencies]
 sqlx-cli = { version = "0.8.6", features = ["mysql"] }
-criterion = "0.8.0"
+criterion = "0.8.2"
 
 [build-dependencies]
-serde = "1.0.215"
+serde = { workspace = true }
 serde_yaml = "0.9.34"
-wit-bindgen = { version = "0.49.0", features = ["async"] }
+wit-bindgen = { version = "0.55.0", features = ["async"] }
 
 [profile.bench]
 debug = false
 
 [profile.release]
+opt-level = 3
 codegen-units = 1
 strip = true
+panic = "abort"
 lto = true
 
 [workspace]
@@ -98,4 +118,11 @@ authors = [
 ]
 
 [workspace.dependencies]
-cosmox-macros = { path = "cosmox-macros" }
+cosmox-macros         = { path = "cosmox-macros" }
+cosmox-api            = { path = "cosmox-api" }
+migration             = { path = "migration" }
+thiserror             = "2.0.18"
+anyhow                = "1.0.102"
+serde                 = "1.0.228"
+clap                  = "4.6.0"
+bincode               = "2.0.1"
