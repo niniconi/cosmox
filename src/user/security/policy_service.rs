@@ -97,7 +97,7 @@ impl PolicyService {
   ) -> Result<RequestUser, AuthError> {
     log::debug!("check resource access token: {token:?}");
 
-    let is_first_boot = Configuration::get_global_configuration()
+    let is_first_boot = Configuration::get_global_configuration().await
       .state
       .is_first_boot
       .load(Ordering::Relaxed);

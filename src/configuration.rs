@@ -1,14 +1,18 @@
 use std::{
   path::Path,
   sync::{
-    LazyLock,
+    Arc,
     atomic::{AtomicBool, Ordering},
   },
+  time::Duration,
 };
 
 use config::{Config as ConfigLoader, File};
+use log::LevelFilter;
+use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tokio::sync::OnceCell;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Configuration {
@@ -22,28 +26,64 @@ pub struct Configuration {
   pub state: State,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Default)]
 pub struct State {
   pub is_first_boot: AtomicBool,
+  pub db_connection: Arc<DatabaseConnection>,
 }
 
-static GLOBAL_CONFIGURATION: LazyLock<Configuration> = LazyLock::new(|| {
-  let mut config = ConfigLoader::builder()
-    .add_source(File::with_name("application.yaml").required(true))
-    .build()
-    .unwrap()
-    .try_deserialize::<Configuration>()
-    .unwrap();
-  config
-    .state
-    .is_first_boot
-    .store(!Path::new(".first_boot.lock").exists(), Ordering::Relaxed);
-  config
-});
+static GLOBAL_CONFIGURATION: OnceCell<Configuration> = OnceCell::const_new();
 
 impl Configuration {
-  pub fn get_global_configuration() -> &'static Configuration {
-    &GLOBAL_CONFIGURATION
+  pub async fn get_global_configuration() -> &'static Configuration {
+    GLOBAL_CONFIGURATION
+      .get_or_init(|| async {
+        let mut config = ConfigLoader::builder()
+          .add_source(File::with_name("application.yaml").required(true))
+          .build()
+          .unwrap()
+          .try_deserialize::<Configuration>()
+          .unwrap();
+
+        let database_url = format!(
+          "mysql://{}:{}@{}:{}/{}",
+          config.database.user,
+          config.database.password,
+          config.database.host,
+          config.database.port,
+          config.database.database
+        );
+
+        let db_connection = {
+          if let Some(database_options) = &config.database.option {
+            let mut database_opt = ConnectOptions::new(database_url);
+
+            database_opt
+              .max_connections(database_options.max_connections)
+              .min_connections(database_options.min_connections)
+              .connect_timeout(Duration::from_secs(database_options.connect_timeout))
+              .acquire_timeout(Duration::from_secs(database_options.acquire_timeout))
+              .idle_timeout(Duration::from_secs(database_options.idle_timeout))
+              .max_lifetime(Duration::from_secs(database_options.max_lifetime))
+              .sqlx_logging_level(LevelFilter::Debug);
+
+            Database::connect(database_opt).await.unwrap()
+          } else {
+            Database::connect(database_url).await.unwrap()
+          }
+        };
+
+        let db_connection = Arc::new(db_connection);
+
+        config.state.db_connection = db_connection;
+
+        config
+          .state
+          .is_first_boot
+          .store(!Path::new(".first_boot.lock").exists(), Ordering::Relaxed);
+        config
+      })
+      .await
   }
 }
 

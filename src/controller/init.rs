@@ -83,7 +83,7 @@ pub async fn initialize(
     };
 
   if is_initialized {
-    Configuration::get_global_configuration()
+    Configuration::get_global_configuration().await
       .state
       .is_first_boot
       .store(false, Ordering::Relaxed);

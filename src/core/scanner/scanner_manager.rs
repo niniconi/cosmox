@@ -9,7 +9,8 @@ use std::{
 
 use futures::future::{join_all, try_join_all};
 use sea_orm::{
-  ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+  ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, JoinType,
+  QueryFilter, QuerySelect, RelationTrait,
 };
 use tracing::instrument;
 use url::Url;
@@ -29,7 +30,7 @@ use crate::{
     },
     scanner::controller::scanner_controller::ScannerError,
   },
-  entities::{library_paths, librarys, metadata_indexes},
+  entities::{library_paths, librarys, metadata_indexes, types},
   services::{resource_service, tag_service},
 };
 use cosmox_api::metadata::{Metadata, MetadataType};
@@ -70,12 +71,25 @@ pub async fn prepare_context_information(
             .map(|library_path| library_path.path.clone())
             .collect();
 
+          let r#type = if let Some(r#type) = library.r#type {
+            match types::Entity::find_by_id(r#type).one(db.as_ref()).await {
+              Ok(r#type) => r#type.map(|x| x.label),
+              Err(err) => {
+                log::error!("{err}");
+                None
+              }
+            }
+          } else {
+            None
+          };
+
           Ok::<Arc<ScannerContextInformation>, ScannerError>(Arc::new(ScannerContextInformation {
             lid: library.lid,
             library_paths: library_paths,
-            library_type: "Default".to_string(),
+            library_type: r#type.unwrap_or("Default".to_string()),
             global_config: Arc::new(
               Configuration::get_global_configuration()
+                .await
                 .cosmox
                 .scanner
                 .clone(),
@@ -110,6 +124,7 @@ pub async fn prepare_context_information(
           library_type: "Default".to_string(),
           global_config: Arc::new(
             Configuration::get_global_configuration()
+              .await
               .cosmox
               .scanner
               .clone(),
@@ -246,7 +261,7 @@ pub async fn store_metadata(
   context: ScannerContext<'_>,
   db: Arc<DatabaseConnection>,
 ) -> Result<(), ScannerError> {
-  let config = Configuration::get_global_configuration();
+  let config = Configuration::get_global_configuration().await;
   let metadata_path = PathBuf::from(config.cosmox.scanner.metadata_path.as_str());
   if !metadata_path.exists() {
     fs::create_dir_all(&metadata_path);
@@ -327,6 +342,7 @@ pub async fn store_metadata(
       metadata.encode_no_child_into_std_write(&mut writer);
 
       let metadata_store_path: &String = &Configuration::get_global_configuration()
+        .await
         .cosmox
         .scanner
         .metadata_path;

@@ -64,7 +64,7 @@ pub async fn info() -> impl Responder {
     name: env!("CARGO_PKG_NAME"),
     version: env!("CARGO_PKG_VERSION"),
     author: env!("CARGO_PKG_AUTHORS"),
-    is_first_boot: Configuration::get_global_configuration()
+    is_first_boot: Configuration::get_global_configuration().await
       .state
       .is_first_boot.load(Ordering::Relaxed),
   };
@@ -108,7 +108,7 @@ pub async fn about() -> impl Responder {
 #[auto_webapi_doc]
 #[get("/system.log")]
 pub async fn log() -> impl Responder {
-  let log_path = &Configuration::get_global_configuration().cosmox.log.path;
+  let log_path = &Configuration::get_global_configuration().await.cosmox.log.path;
   let log = fs::read_to_string(log_path);
   HttpResponse::Ok().body(log.unwrap())
 }

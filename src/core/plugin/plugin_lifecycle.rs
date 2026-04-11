@@ -17,7 +17,7 @@ pub async fn plugin_wasm_lifecycle(
     .call_supported_media_types(&mut *store)
     .await
     .unwrap_or_default();
-  if let Err(err) = PluginManager::push_media_types(supported_media_types) {
+  if let Err(err) = PluginManager::push_media_types(supported_media_types).await {
     log::error!("{err:?}");
   }
 

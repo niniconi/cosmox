@@ -169,7 +169,7 @@ pub async fn upload_user_avatar(
   db: Arc<DatabaseConnection>,
 ) -> Result<PushResponse, FileError> {
   let mut profile_picture_path =
-    PathBuf::from(&Configuration::get_global_configuration().cosmox.data.path);
+    PathBuf::from(&Configuration::get_global_configuration().await.cosmox.data.path);
   profile_picture_path.push("avatar");
   if !profile_picture_path.exists() {
     std::fs::create_dir_all(&profile_picture_path).map_err(|err| match err.kind() {

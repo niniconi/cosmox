@@ -87,7 +87,7 @@ pub async fn query_metadata(
   match metadata_index {
     Some(metadata_index) => {
       let mut metadata_path = PathBuf::from(
-        &Configuration::get_global_configuration()
+        &Configuration::get_global_configuration().await
           .cosmox
           .scanner
           .metadata_path,

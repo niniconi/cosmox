@@ -5,6 +5,7 @@ use std::{
 
 use anyhow::{Result, anyhow};
 use lru::LruCache;
+use sea_orm::{EntityTrait, TryInsertResult};
 use wasmtime::component::ResourceTable;
 use wasmtime::{Engine, Store};
 use wasmtime_wasi_http::WasiHttpCtx;
@@ -22,6 +23,7 @@ use crate::{
       load_external_plugins,
     },
   },
+  entities::types,
   utils::default_constants::ascii_letters_number_separators,
 };
 
@@ -130,7 +132,11 @@ impl PluginManager {
 
   pub async fn start() {
     {
-      let plugin_path = &Configuration::get_global_configuration().cosmox.plugin.path;
+      let plugin_path = &Configuration::get_global_configuration()
+        .await
+        .cosmox
+        .plugin
+        .path;
 
       let builtin_plugins = load_builtin_plugins();
       let external_plugins = load_external_plugins(plugin_path);
@@ -410,7 +416,7 @@ impl PluginManager {
   /// # Returns
   /// - `Ok(())` Add media types successful.
   /// - `Err(bindings_cosmox_types::MediaTypeError)` If it fails the check
-  pub fn push_media_types(
+  pub async fn push_media_types(
     media_types: Vec<String>,
   ) -> Result<(), bindings_cosmox_types::MediaTypeError> {
     let mut plugin_manager = PLUGIN_MANAGER.lock().unwrap();
@@ -436,10 +442,38 @@ impl PluginManager {
       }
     }
 
+    if media_types.is_empty() {
+      return Ok(());
+    }
+
     for media_type in &media_types {
       plugin_manager
         .supported_media_types
         .insert(media_type.clone());
+    }
+
+    let db = Configuration::get_global_configuration()
+      .await
+      .state
+      .db_connection
+      .clone();
+    let types = media_types.iter().map(|ty| types::ActiveModel {
+      label: sea_orm::ActiveValue::Set(ty.clone()),
+      ..Default::default()
+    });
+    let insert = types::Entity::insert_many(types).on_conflict_do_nothing();
+
+    match insert.exec(db.as_ref()).await {
+      Ok(result) => match result {
+        TryInsertResult::Empty => {
+          log::warn!("Skip insertion: No data provided for types {media_types:?}.")
+        }
+        TryInsertResult::Inserted(_) => {
+          log::debug!("Successfully inserted types to database: {media_types:?}.")
+        }
+        TryInsertResult::Conflicted => (),
+      },
+      Err(err) => log::error!("{err}"),
     }
 
     log::info!("Add media types {media_types:?} successful.");

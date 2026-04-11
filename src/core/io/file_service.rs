@@ -126,7 +126,7 @@ pub async fn push_item_octet_stream(
   payload: Payload,
   db: Arc<DatabaseConnection>,
 ) -> Result<PushResponse, FileError> {
-  let mut default_path = PathBuf::from(&Configuration::get_global_configuration().cosmox.data.path);
+  let mut default_path = PathBuf::from(&Configuration::get_global_configuration().await.cosmox.data.path);
   default_path.push("files");
   if !default_path.exists() {
     std::fs::create_dir_all(&default_path).map_err(|err| match err.kind() {

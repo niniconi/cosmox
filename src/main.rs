@@ -2,21 +2,19 @@
 #![allow(clippy::redundant_field_names)]
 
 use core::io::file_controller;
-use std::{env, time::Duration};
+use std::env;
 
 use actix_cors::Cors;
-use actix_web::{App, HttpServer, get, http::header, web};
+use actix_web::{App, HttpServer, http::header, web};
 use configuration::Configuration;
 use controller::{
   library_controller, resource_controller, system_controller, tag_controller, ui_controller,
 };
-use log::LevelFilter;
 use migration::{Migrator, MigratorTrait};
-use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use user::user_controller;
-use utoipa::{OpenApi, openapi};
+use utoipa::OpenApi;
 use utoipa_actix_web::{AppExt, scope};
 use utoipa_scalar::{Scalar, Servable};
 
@@ -47,7 +45,7 @@ struct ApiDoc;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-  let config = Configuration::get_global_configuration();
+  let config = Configuration::get_global_configuration().await;
 
   println!(include_str!("../banner.txt"), env!("CARGO_PKG_VERSION"));
 
@@ -68,35 +66,11 @@ async fn main() -> std::io::Result<()> {
     .with(tracing_subscriber::fmt::layer().with_writer(non_blocking_appender))
     .init();
 
-  let database_url = format!(
-    "mysql://{}:{}@{}:{}/{}",
-    config.database.user,
-    config.database.password,
-    config.database.host,
-    config.database.port,
-    config.database.database
-  );
+  let db_connection = config.state.db_connection.clone();
 
-  let db_connection: DatabaseConnection = if let Some(database_options) = &config.database.option {
-    let mut database_opt = ConnectOptions::new(database_url);
+  Migrator::up(db_connection.as_ref(), None).await.unwrap();
 
-    database_opt
-      .max_connections(database_options.max_connections)
-      .min_connections(database_options.min_connections)
-      .connect_timeout(Duration::from_secs(database_options.connect_timeout))
-      .acquire_timeout(Duration::from_secs(database_options.acquire_timeout))
-      .idle_timeout(Duration::from_secs(database_options.idle_timeout))
-      .max_lifetime(Duration::from_secs(database_options.max_lifetime))
-      .sqlx_logging_level(LevelFilter::Debug);
-
-    Database::connect(database_opt).await.unwrap()
-  } else {
-    Database::connect(database_url).await.unwrap()
-  };
-
-  Migrator::up(&db_connection, None).await.unwrap();
-
-  let db_connection_app_data = web::Data::new(db_connection);
+  let db_connection_app_data = web::Data::from(db_connection);
   let server_host = config.server.host.as_ref();
   let server_port = config.server.port;
   let config_app_data = web::Data::new(config);

@@ -19,7 +19,12 @@ impl MigrationTrait for Migration {
               .primary_key(),
           )
           .col(ColumnDef::new(Types::ScanMode).string().null())
-          .col(ColumnDef::new(Types::Label).string().null())
+          .col(
+            ColumnDef::new(Types::Label)
+              .string()
+              .not_null()
+              .unique_key(),
+          )
           .to_owned(),
       )
       .await
