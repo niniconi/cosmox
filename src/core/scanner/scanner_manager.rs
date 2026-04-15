@@ -157,6 +157,8 @@ pub async fn start_scanner(
       PluginManager::notify_all(event, |store_mut_ref| {
         let resource_metadata_context: Resource<MetadataContext> =
           bindings_context::HostMetadataHandle::new(store_mut_ref.data_mut()).unwrap();
+        let resource_path_mapping_context: Resource<PathMappingContext> =
+          bindings_context::HostPathMappingHandle::new(store_mut_ref.data_mut()).unwrap();
 
         let mut_ref_metadata_context = store_mut_ref
           .data_mut()
@@ -166,7 +168,17 @@ pub async fn start_scanner(
         mut_ref_metadata_context.inner = Some(metadata.clone());
         mut_ref_metadata_context.count = count.clone();
 
-        bindings_context::EventContext::MetadataReadyContext(resource_metadata_context)
+        let mut_ref_path_mapping_context = store_mut_ref
+          .data_mut()
+          .resource_table
+          .get_mut(&resource_path_mapping_context)
+          .unwrap();
+        mut_ref_path_mapping_context.path_mapping_temp = path_mapping.clone();
+
+        bindings_context::EventContext::MetadataReadyContext((
+          resource_metadata_context,
+          resource_path_mapping_context,
+        ))
       })
       .await;
 

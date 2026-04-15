@@ -330,7 +330,7 @@ interface context{
   }
 
   variant event-context {
-    metadata-ready-context(metadata-handle),
+    metadata-ready-context(tuple<metadata-handle, path-mapping-handle>),
     metadata-local-ready-context(tuple<metadata-handle, path-mapping-handle, tag-handle>),
   }
 }

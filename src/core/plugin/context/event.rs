@@ -156,6 +156,7 @@ impl bindings_context::HostMetadataHandle for ComponentRunStates {
           metadata.metadata_type.clone(),
           config,
         )?),
+        "url" => Some(bincode::encode_to_vec(metadata.url.clone(), config)?),
         _ => None,
       };
       drop(metadata);
