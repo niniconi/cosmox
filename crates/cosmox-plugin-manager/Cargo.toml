@@ -1,0 +1,30 @@
+[package]
+name = "cosmox-plugin-manager"
+version.workspace = true
+edition.workspace = true
+keywords.workspace = true
+repository.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+bincode = { workspace = true }
+common = { workspace = true }
+cosmox-agent = { workspace = true }
+cosmox-api = { workspace = true }
+cosmox-backend-data = { workspace = true }
+cosmox-configuration = { workspace = true }
+cosmox-macros = { workspace = true }
+log = { workspace = true }
+lru = { workspace = true }
+serde = { workspace = true, features = ["alloc", "derive", "rc", "serde_derive", "std"] }
+serde_yaml = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-appender = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "smallvec", "fmt", "ansi", "tracing-log", "std"] }
+url = { workspace = true }
+wasmtime = { workspace = true, features = ["async"] }
+wasmtime-wasi = { workspace = true }
+wasmtime-wasi-http = { workspace = true }

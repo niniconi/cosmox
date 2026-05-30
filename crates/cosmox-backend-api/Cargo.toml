@@ -1,0 +1,28 @@
+[package]
+name = "cosmox-backend-api"
+version.workspace = true
+edition.workspace = true
+keywords.workspace = true
+repository.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+bytes = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+common = { workspace = true }
+cosmox-api = { workspace = true }
+cosmox-backend-data = { workspace = true }
+cosmox-configuration = { workspace = true }
+cosmox-macros = { workspace = true }
+cosmox-plugin-manager = { workspace = true }
+cosmox-scanner = { workspace = true }
+futures-util = { workspace = true }
+log = { workspace = true }
+reqwest = { workspace = true, features = ["rustls", "http2", "charset", "system-proxy", "blocking", "json"] }
+serde = { workspace = true, features = ["alloc", "derive", "rc", "serde_derive", "std"] }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "sync", "time"] }
+url = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }

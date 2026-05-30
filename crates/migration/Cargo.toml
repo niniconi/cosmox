@@ -1,0 +1,26 @@
+[package]
+name = "migration"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "migration"
+path = "src/lib.rs"
+
+[dependencies]
+async-std = { workspace = true, optional = true, features = ["attributes", "tokio1"] }
+
+[dependencies.sea-orm-migration]
+workspace = true
+features = ["sqlx-mysql", "runtime-async-std"]
+
+[features]
+runtime-async-std = ["dep:async-std"]
+
+[[bin]]
+name = "migration"
+path = "src/main.rs"
+required-features = ["runtime-async-std"]

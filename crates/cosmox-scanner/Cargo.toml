@@ -1,0 +1,20 @@
+[package]
+name = "cosmox-scanner"
+version.workspace = true
+edition.workspace = true
+keywords.workspace = true
+repository.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+cosmox-api = { workspace = true }
+cosmox-backend-data = { workspace = true }
+cosmox-configuration = { workspace = true }
+cosmox-plugin-manager = { workspace = true }
+futures = { workspace = true }
+futures-util = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+url = { workspace = true }

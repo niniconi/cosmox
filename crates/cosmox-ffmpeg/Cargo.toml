@@ -1,0 +1,21 @@
+[package]
+name = "cosmox-ffmpeg"
+version.workspace = true
+edition.workspace = true
+keywords.workspace = true
+repository.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[features]
+default = []
+ffmpeg-tests = []
+
+[dependencies]
+ffmpeg-next = { workspace = true }
+ffmpeg-sys-next = { workspace = true }
+image = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+
+[dev-dependencies]
+reqwest = { workspace = true, features = ["blocking"] }

@@ -2,18 +2,18 @@ server:
   host: "127.0.0.1"
   port: 8080
 database:
-  host: "192.168.1.254"
+  host: "192.168.1.246"
   port: 3306
   user: "root"
   password: "123456"
   database: "media"
-  option:
-    max-connections: 100
-    min-connections: 8
-    connect-timeout: 8
-    acquire-timeout: 8
-    idle-timeout: 10
-    max-lifetime: 1800
+  # option:
+  #   max-connections: 100
+  #   min-connections: 8
+  #   connect-timeout: 8
+  #   acquire-timeout: 8
+  #   idle-timeout: 10
+  #   max-lifetime: 1800
 cosmox:
   name: "cosmox server"
   scanner:

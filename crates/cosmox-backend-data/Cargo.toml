@@ -1,0 +1,39 @@
+[package]
+name = "cosmox-backend-data"
+version.workspace = true
+edition.workspace = true
+keywords.workspace = true
+repository.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+argon2 = { workspace = true }
+bytes = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+common = { workspace = true }
+cosmox-api = { workspace = true }
+cosmox-configuration = { workspace = true }
+cosmox-macros = { workspace = true }
+futures-util = { workspace = true }
+jsonwebtoken = { workspace = true, features = ["aws_lc_rs"] }
+log = { workspace = true }
+migration = { workspace = true }
+otp = { workspace = true }
+rand = { workspace = true }
+reqwest = { workspace = true, features = ["rustls", "http2", "charset", "system-proxy", "blocking", "json"] }
+rkyv = { workspace = true, features = ["alloc", "bytecheck", "std"] }
+sea-orm = { workspace = true, features = ["sqlx-mysql", "runtime-tokio-rustls", "macros", "with-chrono"] }
+serde = { workspace = true, features = ["alloc", "derive", "rc", "serde_derive", "std"] }
+sqlx = { workspace = true, features = ["mysql", "macros", "runtime-tokio-rustls", "chrono", "uuid", "json"] }
+sysinfo = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "sync", "time"] }
+url = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+validator = { workspace = true, features = ["derive"] }
+
+
+
+

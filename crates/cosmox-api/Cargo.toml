@@ -1,0 +1,16 @@
+[package]
+name = "cosmox-api"
+version.workspace = true
+edition.workspace = true
+keywords.workspace = true
+repository.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+bincode = { workspace = true }
+cosmox-macros = { workspace = true }
+log = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["derive", "rc"] }
+wit-bindgen = { workspace = true, features = ["async"] }

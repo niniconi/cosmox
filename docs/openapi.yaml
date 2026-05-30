@@ -1,0 +1,1920 @@
+openapi: "3.1.0"
+info:
+  title: cosmox API
+  description: |
+    REST API for cosmox — a multimedia management platform.
+    All endpoints are prefixed with `/api` and return a standard `Message<T>` envelope.
+  version: "0.0.1"
+  contact:
+    name: cosmox
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+paths:
+  # ──────────────── System ────────────────
+  /api/system/info:
+    get:
+      tags: [System]
+      summary: Get system information
+      operationId: systemInfo
+      responses:
+        "200":
+          description: System information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_SystemInfo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/system/restart:
+    post:
+      tags: [System]
+      summary: Restart the server
+      operationId: systemRestart
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Server restart initiated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_String"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/system/shutdown:
+    post:
+      tags: [System]
+      summary: Shut down the server
+      operationId: systemShutdown
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Server shutdown initiated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_String"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/system/about:
+    get:
+      tags: [System]
+      summary: Get about markdown
+      operationId: systemAbout
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: About page as markdown
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_String"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/system/log:
+    get:
+      tags: [System]
+      summary: Get system log
+      operationId: systemLog
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: System log content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_String"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/system/all/delete:
+    post:
+      tags: [System]
+      summary: Delete all data
+      operationId: systemDeleteAll
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: All data deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_Empty"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ──────────────── Initialize ────────────────
+  /api/initialize:
+    post:
+      tags: [Initialize]
+      summary: Initialize the server (first boot)
+      operationId: initialize
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InitializeConfig"
+      responses:
+        "200":
+          description: Initialization status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_InitStatus"
+
+  # ──────────────── User ────────────────
+  /api/user/login:
+    post:
+      tags: [User]
+      summary: Login by username or email
+      operationId: userLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserLoginRequest"
+      responses:
+        "200":
+          description: JWT token returned in data field
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_String"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/user/register:
+    post:
+      tags: [User]
+      summary: Create a new user
+      operationId: userSignUp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserSignUpRequest"
+      responses:
+        "200":
+          description: Created user info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_UserResp"
+        "409":
+          description: Conflict (username taken, etc.)
+
+  /api/user/{uid}:
+    get:
+      tags: [User]
+      summary: Get user by ID
+      operationId: userGet
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: User entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/user/query:
+    get:
+      tags: [User]
+      summary: Query users
+      operationId: userQuery
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: role
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_UserArray"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/user/delete:
+    post:
+      tags: [User]
+      summary: Delete user by ID
+      operationId: userDelete
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: uid
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: User deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_Empty"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/user/{uid}/avatar/upload:
+    post:
+      tags: [User]
+      summary: Upload user avatar
+      operationId: userUploadAvatar
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: Avatar uploaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_PushResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/user/role/add:
+    post:
+      tags: [User]
+      summary: Add role for user (not implemented)
+      operationId: userAddRole
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserRoleAddRequest"
+      responses:
+        "501":
+          description: Not implemented
+
+  # ──────────────── ACL ────────────────
+  /api/user/acl/role/add:
+    post:
+      tags: [ACL]
+      summary: Add a new role
+      operationId: aclAddRole
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleAddRequest"
+      responses:
+        "200":
+          description: Role created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_Empty"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/user/acl/role/delete:
+    post:
+      tags: [ACL]
+      summary: Delete a role
+      operationId: aclDeleteRole
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: rid
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Role deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_Empty"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/user/acl/permission/add:
+    post:
+      tags: [ACL]
+      summary: Add a new permission
+      operationId: aclAddPermission
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PermissionAddRequest"
+      responses:
+        "200":
+          description: Permission created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_Empty"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/user/acl/permission/delete:
+    post:
+      tags: [ACL]
+      summary: Delete a permission
+      operationId: aclDeletePermission
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: pid
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Permission deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_Empty"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/user/acl/role/permission/add:
+    post:
+      tags: [ACL]
+      summary: Assign a permission to a role
+      operationId: aclAddPermissionForRole
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleLinkPermissionAddRequest"
+      responses:
+        "200":
+          description: Permission linked to role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_Empty"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/user/acl/query:
+    get:
+      tags: [ACL]
+      summary: Query roles and permissions (not implemented)
+      operationId: aclQuery
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "501":
+          description: Not implemented
+
+  # ──────────────── Library ────────────────
+  /api/library/{lid}:
+    get:
+      tags: [Library]
+      summary: Get library by ID
+      operationId: libraryGet
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: lid
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Library entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_Library"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/library/query:
+    get:
+      tags: [Library]
+      summary: Query libraries
+      operationId: libraryQuery
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of libraries (paginated)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_LibraryArray"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/library/add:
+    post:
+      tags: [Library]
+      summary: Add a new library
+      operationId: libraryAdd
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LibraryAddRequest"
+      responses:
+        "200":
+          description: Library created (returns lid or message)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_String"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Name conflict
+
+  /api/library/{lid}/modify:
+    post:
+      tags: [Library]
+      summary: Modify library metadata
+      operationId: libraryModify
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: lid
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LibraryModifyRequest"
+      responses:
+        "200":
+          description: Library modified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_String"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/library/delete:
+    post:
+      tags: [Library]
+      summary: Delete a library
+      operationId: libraryDelete
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: lid
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Library deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_Empty"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/library/types/all:
+    get:
+      tags: [Library]
+      summary: Get all library types
+      operationId: libraryGetAllType
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: All selectable library types
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_LibraryTypeArray"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ──────────────── Resource ────────────────
+
+  /api/resource/add:
+    post:
+      tags: [Resource]
+      summary: Add a new resource
+      operationId: resourceAdd
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResourceAddRequest"
+      responses:
+        "200":
+          description: Resource created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_Resource"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/resource/{rid}:
+    get:
+      tags: [Resource]
+      summary: Get resource by ID
+      operationId: resourceGet
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: rid
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Resource info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_Resource"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/resource/delete:
+    post:
+      tags: [Resource]
+      summary: Delete a resource
+      operationId: resourceDelete
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: rid
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Resource deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_Empty"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/resource/query:
+    get:
+      tags: [Resource]
+      summary: Query resources
+      operationId: resourceQuery
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: lid
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: page_size
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Query results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_ResourceArray"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/resource/{rid}/metadata:
+    get:
+      tags: [Resource]
+      summary: Get resource metadata (not implemented)
+      operationId: resourceGetMetadata
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: rid
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "501":
+          description: Not implemented
+
+  /api/resource/{rid}/tag/add:
+    post:
+      tags: [Resource]
+      summary: Add tags to a resource
+      operationId: resourceAddTag
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: rid
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResourceAddTagRequest"
+      responses:
+        "200":
+          description: Tags added to resource
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_ResourcesRelatedTagsArray"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ──────────────── Tag ────────────────
+  /api/tag/{id}:
+    get:
+      tags: [Tag]
+      summary: Get tag by ID
+      operationId: tagGet
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Tag entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_Tag"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/tag/query:
+    get:
+      tags: [Tag]
+      summary: Query tags
+      operationId: tagQuery
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: tid
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of tags
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_TagArray"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/tag/add:
+    post:
+      tags: [Tag]
+      summary: Add a tag
+      operationId: tagAdd
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagAddRequest"
+      responses:
+        "200":
+          description: Tag created (returns tid)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_Integer"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/tag/group/{id}:
+    get:
+      tags: [Tag]
+      summary: Get tag group by ID
+      operationId: tagGroupGet
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Tag group entity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_TagGroup"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/tag/group/add:
+    post:
+      tags: [Tag]
+      summary: Add tag group
+      operationId: tagGroupAdd
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagGroupAddRequest"
+      responses:
+        "200":
+          description: Tag group created (returns tgid)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_Integer"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/tag/group/delete:
+    post:
+      tags: [Tag]
+      summary: Delete tag group
+      operationId: tagGroupDelete
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: tgid
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Tag group deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_Empty"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/tag/group/query:
+    get:
+      tags: [Tag]
+      summary: Query tag groups
+      operationId: tagGroupQuery
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: tgid
+          in: query
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: List of tag groups
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_TagGroupArray"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/tag/catalog:
+    get:
+      tags: [Tag]
+      summary: Get tag catalog (groups with tags)
+      operationId: tagCatalog
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Tag catalog entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_TagCatalogEntryArray"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/scanner/scan/{lid}:
+    post:
+      tags: [Scanner]
+      summary: Scan a specific library
+      operationId: scannerScan
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: lid
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Scan started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_String"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/scanner/scan/all:
+    post:
+      tags: [Scanner]
+      summary: Scan all libraries
+      operationId: scannerScanAll
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Scan started for all libraries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_String"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/scanner/task/add:
+    post:
+      tags: [Scanner]
+      summary: Add scan task (not implemented)
+      operationId: scannerAddTask
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "501":
+          description: Not implemented
+
+  /api/scanner/status:
+    get:
+      tags: [Scanner]
+      summary: Get scanner status (not implemented)
+      operationId: scannerStatus
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "501":
+          description: Not implemented
+
+  /api/scanner/info:
+    get:
+      tags: [Scanner]
+      summary: Get scanner information (not implemented)
+      operationId: scannerInfo
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "501":
+          description: Not implemented
+
+  # ──────────────── Path Tree ────────────────
+  /api/scanner/path/list:
+    get:
+      tags: [Scanner]
+      summary: Browse sub-directories of a given path
+      operationId: pathSubPath
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: show_hide
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: List of sub-directory names
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_StringArray"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          description: IO error
+
+  /api/plugin/info:
+    get:
+      tags: [Plugin]
+      summary: Get plugin information
+      operationId: pluginInfo
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Plugin manager info as debug string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_String"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/plugin/install:
+    post:
+      tags: [Plugin]
+      summary: Install a plugin (not implemented)
+      operationId: pluginInstall
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InstallPluginParams"
+      responses:
+        "501":
+          description: Not implemented
+
+  /api/plugin/uninstall:
+    post:
+      tags: [Plugin]
+      summary: Uninstall a plugin (not implemented)
+      operationId: pluginUninstall
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "501":
+          description: Not implemented
+
+  /api/plugin/{id}/enable:
+    post:
+      tags: [Plugin]
+      summary: Enable a plugin (not implemented)
+      operationId: pluginEnable
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "501":
+          description: Not implemented
+
+  /api/plugin/{id}/disable:
+    post:
+      tags: [Plugin]
+      summary: Disable a plugin (not implemented)
+      operationId: pluginDisable
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "501":
+          description: Not implemented
+
+  # ──────────────── Metadata ────────────────
+  /api/metadata/{rid}:
+    get:
+      tags: [Metadata]
+      summary: Get metadata by resource ID (not implemented)
+      operationId: metadataGet
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: rid
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "501":
+          description: Not implemented
+
+  /api/metadata/query:
+    get:
+      tags: [Metadata]
+      summary: Query metadata tree
+      operationId: metadataQuery
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: root_node
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: depth
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Metadata tree
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_Metadata"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ──────────────── Item (File) ────────────────
+  /api/item/push:
+    post:
+      tags: [Item]
+      summary: Upload a file (octet-stream)
+      operationId: itemPush
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: File uploaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_PushResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/item/{id}/pull:
+    get:
+      tags: [Item]
+      summary: Download a file by ID
+      operationId: itemPull
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ──────────────── Search ────────────────
+  /api/search:
+    get:
+      tags: [Search]
+      summary: Search resources
+      operationId: search
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: keyword
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: tags
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+            description: Comma-separated tag names
+        - name: lid
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: before_create_datetime
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: after_create_datetime
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: before_last_update_datetime
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: after_last_update_datetime
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Search results (paginated)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message_ResourceArray"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/ui/wasm:
+    get:
+      tags: [UI]
+      summary: Get core UI WASM (not implemented)
+      operationId: uiGetCore
+      responses:
+        "501":
+          description: Not implemented
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: "JWT token obtained from `/api/user/login`. Pass the raw token without a 'Bearer ' prefix."
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Message_Empty"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Message_Empty"
+
+  schemas:
+    # ─── Generic Envelope ───
+    Pagination:
+      type: object
+      required: [total_items, total_pages, current_page, page_size, next_page_url, prev_page_url]
+      properties:
+        total_items:
+          type: integer
+        total_pages:
+          type: integer
+        current_page:
+          type: integer
+        page_size:
+          type: integer
+        next_page_url:
+          type: string
+        prev_page_url:
+          type: string
+
+    MessageEnvelope:
+      type: object
+      required: [code, message, status, datetime]
+      properties:
+        code:
+          type: string
+          example: "200"
+        message:
+          type: string
+          example: ""
+        status:
+          type: string
+          example: success
+        datetime:
+          type: string
+          format: date-time
+        data:
+          description: Present on success
+        errors:
+          type: array
+          description: Present on error
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    # ─── Concrete Message Types ───
+    Message_Empty:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data: {}
+
+    Message_String:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              type: string
+
+    Message_StringArray:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                type: string
+
+    Message_SystemInfo:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/SystemInfo"
+
+    Message_InitStatus:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/InitStatus"
+
+    Message_User:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/User"
+
+    Message_UserArray:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/User"
+
+    Message_UserResp:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/UserResp"
+
+    Message_Library:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/Library"
+
+    Message_LibraryArray:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/Library"
+
+    Message_LibraryTypeArray:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/LibraryType"
+
+    Message_Tag:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/Tag"
+
+    Message_TagArray:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/Tag"
+
+    Message_Resource:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/Resource"
+
+    Message_ResourceArray:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/Resource"
+
+    Message_ResourcesRelatedTagsArray:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/ResourcesRelatedTags"
+
+    Message_Metadata:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/MetadataNode"
+
+    Message_PushResponse:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/PushResponse"
+
+    # ─── Domain Models ───
+    SystemInfo:
+      type: object
+      required: [os, name, version, author, is_first_boot]
+      properties:
+        os:
+          type: string
+          example: Linux
+        name:
+          type: string
+          example: cosmox
+        version:
+          type: string
+          example: 0.0.1
+        author:
+          type: string
+          example: niniconi
+        is_first_boot:
+          type: boolean
+
+    InitStatus:
+      type: object
+      properties:
+        initialized:
+          type: boolean
+
+    User:
+      type: object
+      properties:
+        uid:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+          nullable: true
+        nickname:
+          type: string
+          nullable: true
+        avatar:
+          type: integer
+          nullable: true
+        create_datetime:
+          type: string
+          format: date-time
+        last_update_datetime:
+          type: string
+          format: date-time
+
+    UserResp:
+      type: object
+      properties:
+        uid:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+          nullable: true
+
+    Library:
+      type: object
+      properties:
+        lid:
+          type: integer
+        name:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        type:
+          type: integer
+          nullable: true
+        create_by_uid:
+          type: integer
+        create_datetime:
+          type: string
+          format: date-time
+        last_update_datetime:
+          type: string
+          format: date-time
+
+    LibraryType:
+      type: object
+      properties:
+        tid:
+          type: integer
+        scan_mode:
+          type: string
+          nullable: true
+        label:
+          type: string
+
+    Tag:
+      type: object
+      properties:
+        tid:
+          type: integer
+        name:
+          type: string
+        tgid:
+          type: integer
+        create_datetime:
+          type: string
+          format: date-time
+
+    Resource:
+      type: object
+      properties:
+        rid:
+          type: integer
+        name:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        lid:
+          type: integer
+          nullable: true
+        create_datetime:
+          type: string
+          format: date-time
+        last_update_datetime:
+          type: string
+          format: date-time
+
+    ResourcesRelatedTags:
+      type: object
+      properties:
+        rid:
+          type: integer
+        tid:
+          type: integer
+
+    MetadataNode:
+      type: object
+      properties:
+        lid:
+          type: integer
+        rid:
+          type: integer
+        file_size:
+          type: integer
+        file_cnt:
+          type: integer
+        name:
+          type: string
+        alias_name:
+          type: array
+          items:
+            type: string
+        origin_name:
+          type: string
+
+    PushResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        path:
+          type: string
+
+    # ─── Request Bodies ───
+    InitializeConfig:
+      type: object
+      required: [admin_password, admin_confirm_password]
+      properties:
+        admin_password:
+          type: string
+          format: password
+        admin_confirm_password:
+          type: string
+          format: password
+
+    UserLoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+
+    UserSignUpRequest:
+      type: object
+      required: [username, password, confirm_password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+        confirm_password:
+          type: string
+          format: password
+        nickname:
+          type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+          nullable: true
+
+    RoleAddRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+
+    PermissionAddRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+
+    UserRoleAddRequest:
+      type: object
+      required: [uid, rid]
+      properties:
+        uid:
+          type: integer
+          format: int64
+        rid:
+          type: integer
+          format: int64
+
+    RoleLinkPermissionAddRequest:
+      type: object
+      required: [rid, pid]
+      properties:
+        rid:
+          type: integer
+        pid:
+          type: integer
+
+    LibraryAddRequest:
+      type: object
+      required: [name, type, tags, library_paths]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        type:
+          type: integer
+        tags:
+          type: array
+          items:
+            type: integer
+        library_paths:
+          type: array
+          items:
+            type: string
+
+    LibraryModifyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+
+    ResourceAddTagRequest:
+      type: object
+      required: [tags]
+      properties:
+        tags:
+          type: array
+          items:
+            type: integer
+
+    InstallPluginParams:
+      type: object
+      properties:
+        url:
+          type: string
+          nullable: true
+
+    # ─── Additional Schemas (aligned with SDK) ───
+
+    Message_Integer:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              type: integer
+
+    ResourceAddRequest:
+      type: object
+      required: [name, lid]
+      properties:
+        name:
+          type: string
+        lid:
+          type: integer
+        description:
+          type: string
+          nullable: true
+
+    TagGroup:
+      type: object
+      properties:
+        tgid:
+          type: integer
+        name:
+          type: string
+        create_datetime:
+          type: string
+          format: date-time
+
+    Message_TagGroup:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/TagGroup"
+
+    Message_TagGroupArray:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/TagGroup"
+
+    TagAddRequest:
+      type: object
+      required: [label, tgid]
+      properties:
+        label:
+          type: string
+        tgid:
+          type: integer
+
+    TagGroupAddRequest:
+      type: object
+      required: [label]
+      properties:
+        label:
+          type: string
+
+    TagCatalogEntry:
+      type: object
+      properties:
+        group:
+          $ref: "#/components/schemas/TagGroup"
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/Tag"
+
+    Message_TagCatalogEntryArray:
+      type: object
+      allOf:
+        - $ref: "#/components/schemas/MessageEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/TagCatalogEntry"

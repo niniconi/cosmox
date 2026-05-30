@@ -1,0 +1,31 @@
+[package]
+name = "cosmox-adapter-web"
+version.workspace = true
+edition.workspace = true
+keywords.workspace = true
+repository.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+actix-cors = { workspace = true }
+actix-files = { workspace = true }
+actix-multipart = { workspace = true }
+actix-web = { workspace = true }
+actix-ws = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+common = { workspace = true }
+cosmox-backend-api = { workspace = true }
+cosmox-configuration = { workspace = true }
+cosmox-macros = { workspace = true }
+futures-util = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true, features = ["alloc", "derive", "rc", "serde_derive", "std"] }
+serde_qs = { workspace = true, features = ["actix4"] }
+utoipa = { workspace = true, features = ["actix_extras", "chrono"] }
+utoipa-actix-web = { workspace = true }
+utoipa-scalar = { workspace = true, features = ["actix-web"] }
+
+
+
+

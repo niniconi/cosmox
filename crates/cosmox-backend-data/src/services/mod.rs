@@ -1,0 +1,12 @@
+pub mod auth;
+pub mod file_service;
+pub mod init_service;
+pub mod libraries_service;
+pub mod metadata_service;
+pub mod resource_service;
+pub mod role_permission_service;
+pub mod scanner_service;
+pub mod search_service;
+pub mod system_service;
+pub mod tag_service;
+pub mod user_service;

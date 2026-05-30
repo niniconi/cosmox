@@ -1,21 +1,19 @@
-// Ignore everything
+# Ignore everything by default
 *
 
-// Allow what is needed
+# Git metadata (for workspace Cargo.toml git dependency)
 !.git
 
-!src
-!migration
-!cosmox-api
-!cosmox-macros
-!cosmox-plugin-pack
-!wit
-!static
-
-!build.rs
+# Root source and config files
+!src/
+!static/
 !Cargo.lock
 !Cargo.toml
-!banner.txt
 !application.yaml
+!banner.txt
 !rustfmt.toml
 !rust-toolchain.toml
+
+# Crates directory (all subdirectories and Cargo.toml files needed for Docker build)
+!crates/
+!crates/**

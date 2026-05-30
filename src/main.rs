@@ -1,215 +1,75 @@
-#![cfg_attr(debug_assertions, allow(unused))]
-#![allow(clippy::redundant_field_names)]
+use std::{env, error::Error};
 
-use core::io::file_controller;
-use std::env;
-
-use actix_cors::Cors;
-use actix_web::{App, HttpServer, http::header, web};
-use configuration::Configuration;
-use controller::{
-  library_controller, resource_controller, system_controller, tag_controller, ui_controller,
-};
-use migration::{Migrator, MigratorTrait};
+use common::Handle;
+use cosmox_configuration::Configuration;
+use cosmox_plugin_manager::plugin_manager::PluginManager;
+use tokio::signal::unix::{SignalKind, signal};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use user::user_controller;
-use utoipa::OpenApi;
-use utoipa_actix_web::{AppExt, scope};
-use utoipa_scalar::{Scalar, Servable};
 
-use core::{
-  plugin::plugin_controller,
-  scanner::controller::{path_tree_scanner, scanner_controller},
-};
+pub async fn spawn_all_init() -> Result<(), Box<dyn Error>> {
+    PluginManager::init().await;
+    cosmox_backend_data::init().await?;
+    Ok(())
+}
 
-use crate::{
-  controller::{init, search_controller},
-  core::{plugin::plugin_manager::PluginManager, scanner::controller::metadata_controller},
-  user::{
-    acl_controller,
-    security::{auth_middleware::TokenAuth, policy_service::PolicyService},
-  },
-};
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    let config = Configuration::get_global_configuration();
 
-pub mod configuration;
-pub mod controller;
-pub mod core;
-pub mod entities;
-pub mod services;
-pub mod user;
-pub mod utils;
+    println!(include_str!("../banner.txt"), env!("CARGO_PKG_VERSION"));
 
-#[derive(OpenApi)]
-struct ApiDoc;
+    let file_appender =
+        RollingFileAppender::new(Rotation::DAILY, config.cosmox.log.path.as_str(), "app.log");
+    let (non_blocking_appender, _guard) = tracing_appender::non_blocking(file_appender);
+    // _guard held for main lifetime — keeps non-blocking writer alive
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
-  let config = Configuration::get_global_configuration().await;
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::EnvFilter::new(
+            env::var("RUST_LOG").unwrap_or_else(
+                #[cfg(debug_assertions)]
+                |_| "trace".into(),
+                #[cfg(not(debug_assertions))]
+                |_| "info".into(),
+            ),
+        ))
+        .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::fmt::layer().with_writer(non_blocking_appender))
+        .init();
 
-  println!(include_str!("../banner.txt"), env!("CARGO_PKG_VERSION"));
+    let server_host = config.server.host.as_ref();
+    let server_port = config.server.port;
 
-  let file_appender =
-    RollingFileAppender::new(Rotation::DAILY, config.cosmox.log.path.as_str(), "app.log");
-  let (non_blocking_appender, _guard) = tracing_appender::non_blocking(file_appender);
+    log::info!("start");
 
-  tracing_subscriber::registry()
-    .with(tracing_subscriber::EnvFilter::new(
-      env::var("RUST_LOG").unwrap_or_else(
-        #[cfg(debug_assertions)]
-        |_| "trace".into(),
-        #[cfg(not(debug_assertions))]
-        |_| "info".into(),
-      ),
-    ))
-    .with(tracing_subscriber::fmt::layer())
-    .with(tracing_subscriber::fmt::layer().with_writer(non_blocking_appender))
-    .init();
+    log::debug!(
+        "Config dump:\n{}",
+        serde_json::to_string_pretty(config).expect("serialize config")
+    );
 
-  let db_connection = config.state.db_connection.clone();
+    spawn_all_init().await?;
 
-  Migrator::up(db_connection.as_ref(), None).await.unwrap();
+    let (web_server, mut web_handle) =
+        cosmox_adapter_web::server(config, server_host, server_port)?;
+    let (ipc_server, mut ipc_handle) = cosmox_adapter_ipc::server(config)?;
 
-  let db_connection_app_data = web::Data::from(db_connection);
-  let server_host = config.server.host.as_ref();
-  let server_port = config.server.port;
-  let config_app_data = web::Data::new(config);
+    tokio::spawn(async move {
+        let mut sigint = signal(SignalKind::interrupt()).expect("create SIGINT handler"); // Ctrl+C
+        let mut sigterm = signal(SignalKind::terminate()).expect("create SIGTERM handler"); // kill cmd
+        let mut sigquit = signal(SignalKind::quit()).expect("create SIGQUIT handler"); // Ctrl+\
 
-  PluginManager::start().await;
+        tokio::select! {
+          _ = sigint.recv() => {},
+          _ = sigterm.recv() => {},
+          _ = sigquit.recv() => {},
+        }
 
-  let policy_service = web::Data::new(PolicyService {});
+        web_handle.stop(true).await;
+        ipc_handle.stop(true).await;
+    });
 
-  log::info!("start");
-
-  #[cfg(debug_assertions)]
-  println!("{}", serde_json::to_string_pretty(config).unwrap());
-
-  HttpServer::new(move || {
-    let cors = Cors::default()
-      .allow_any_origin()
-      .allowed_methods(vec!["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
-      .allowed_headers(vec![
-        header::AUTHORIZATION,
-        header::ACCEPT,
-        header::CONTENT_TYPE,
-        header::RANGE,
-        header::IF_RANGE,
-        header::CACHE_CONTROL,
-        header::PRAGMA,
-        header::HeaderName::from_static("x-session-id"),
-        header::HeaderName::from_static("x-client-version"),
-      ])
-      .expose_headers(vec![
-        header::CONTENT_RANGE,
-        header::CONTENT_LENGTH,
-        header::ACCEPT_RANGES,
-        header::SERVER,
-      ])
-      .max_age(3600);
-
-    let (app, api) = App::new()
-      .app_data(db_connection_app_data.clone())
-      .app_data(config_app_data.clone())
-      .app_data(policy_service.clone())
-      .wrap(cors)
-      .wrap(TokenAuth)
-      .into_utoipa_app()
-      .openapi(ApiDoc::openapi())
-      .service(
-        scope::scope("/api")
-          .service(init::initialize)
-          .service(search_controller::search)
-          .service(
-            scope::scope("/system")
-              .service(system_controller::info)
-              .service(system_controller::restart)
-              .service(system_controller::shutdown)
-              .service(system_controller::about)
-              .service(system_controller::log),
-          )
-          .service(
-            scope::scope("/library")
-              .service(library_controller::modify)
-              .service(library_controller::add)
-              .service(library_controller::delete)
-              .service(library_controller::query)
-              .service(library_controller::get_all_type)
-              .service(library_controller::get),
-          )
-          .service(
-            scope::scope("/tag")
-              .service(tag_controller::group_get)
-              .service(tag_controller::add)
-              .service(tag_controller::group_add)
-              .service(tag_controller::group_delete)
-              .service(tag_controller::query)
-              .service(tag_controller::group_query)
-              .service(tag_controller::all_query)
-              .service(tag_controller::get),
-          )
-          .service(
-            scope::scope("/resource")
-              .service(resource_controller::add)
-              .service(resource_controller::delete)
-              .service(resource_controller::get_metadata)
-              .service(resource_controller::query)
-              .service(resource_controller::add_tag)
-              .service(resource_controller::get),
-          )
-          .service(
-            scope::scope("/user")
-              .service(user_controller::login)
-              .service(user_controller::sign_up)
-              .service(user_controller::delete)
-              .service(user_controller::query)
-              .service(user_controller::upload_avatar)
-              .service(user_controller::role_add)
-              .service(user_controller::get)
-              .service(
-                utoipa_actix_web::scope::scope("/acl")
-                  .service(acl_controller::add_role)
-                  .service(acl_controller::delete_role)
-                  .service(acl_controller::add_permission)
-                  .service(acl_controller::delete_permission)
-                  .service(acl_controller::add_permission_for_role),
-              ),
-          )
-          .service(
-            scope::scope("/item")
-              .service(file_controller::pull)
-              .service(file_controller::push),
-          )
-          .service(
-            scope::scope("/scanner")
-              .service(scanner_controller::scan_all)
-              .service(scanner_controller::scan)
-              .service(scanner_controller::processed)
-              .service(scanner_controller::add_task)
-              .service(scanner_controller::info)
-              .service(path_tree_scanner::get_sub_path),
-          )
-          .service(
-            scope::scope("/plugin")
-              .service(plugin_controller::install_plugin)
-              .service(plugin_controller::uninstall_plugin)
-              .service(plugin_controller::enable_plugin)
-              .service(plugin_controller::disable_plugin)
-              .service(plugin_controller::info),
-          )
-          .service(
-            scope::scope("/metadata")
-              .service(metadata_controller::query)
-              .service(metadata_controller::get),
-          )
-          .service(scope::scope("/ui").service(ui_controller::get_core)),
-      )
-      .split_for_parts();
-
-    app
-      .service(Scalar::with_url("/scalar", api))
-      .service(actix_files::Files::new("/", "./static").index_file("index.html"))
-  })
-  .bind((server_host, server_port))?
-  .run()
-  .await
+    let (web, ipc) = tokio::join!(web_server, ipc_server);
+    web?;
+    ipc?;
+    Ok(())
 }
