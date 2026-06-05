@@ -6,21 +6,21 @@ use crate::{
     Api,
     error::SdkError,
     types::{
-        InitStatus, InitializeConfig, InstallPlugin, Library, LibraryAdd, LibraryDeleteRequest,
-        LibraryModify, LibraryQueryRequest, LibraryType, Message, MessagePayload, Permission,
-        PermissionAddRequest, PushResponse, Resource, ResourceAddRequest, ResourceModifyRequest,
-        ResourceQueryRequest, Role, RoleAddRequest, RoleLinkPermissionAddRequest, ScannerInfo,
-        ScannerStatus, ScannerTaskAddRequest, SearchRequest, SystemInfo, Tag, TagAddRequest,
-        TagCatalogEntry, TagGroup, TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest,
-        TagQueryRequest, User, UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest,
-        UserSignUp,
+        InitStatus, InitializeConfig, InstallPlugin, LibrariesRelatedTags, Library, LibraryAdd,
+        LibraryDeleteRequest, LibraryModify, LibraryPath, LibraryQueryRequest, LibraryType,
+        Message, MessagePayload, Permission, PermissionAddRequest, PushResponse, Resource,
+        ResourceAddRequest, ResourceModifyRequest, ResourceQueryRequest, Role, RoleAddRequest,
+        RoleLinkPermissionAddRequest, ScannerInfo, ScannerStatus, ScannerTaskAddRequest,
+        SearchRequest, SystemInfo, Tag, TagAddRequest, TagCatalogEntry, TagGroup,
+        TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest, TagQueryRequest, User,
+        UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest, UserSignUp,
     },
 };
 
 pub struct HttpApi {
     pub base_url: String,
-    pub(crate) client: reqwest::Client,
-    pub token: Option<String>,
+    client: reqwest::Client,
+    token: Option<String>,
 }
 
 impl HttpApi {
@@ -234,8 +234,6 @@ impl Api for HttpApi {
         }
     }
 
-    // Auth
-
     fn set_token(&mut self, token: String) {
         self.token = Some(token);
     }
@@ -258,8 +256,6 @@ impl Api for HttpApi {
             Ok(())
         })
     }
-
-    // System
 
     fn system_info(
         &self,
@@ -292,8 +288,6 @@ impl Api for HttpApi {
     fn system_delete_all(&self) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
         Box::pin(async move { self.post_path("/system/all/delete").await })
     }
-
-    // User
 
     fn user_get(
         &self,
@@ -333,8 +327,6 @@ impl Api for HttpApi {
         Box::pin(async move { self.post("/user/role/add", &payload).await })
     }
 
-    // Library
-
     fn library_get(
         &self,
         lid: u64,
@@ -355,7 +347,17 @@ impl Api for HttpApi {
     fn library_add(
         &self,
         payload: LibraryAdd,
-    ) -> Pin<Box<dyn Future<Output = Result<serde_json::Value, SdkError>> + Send + '_>> {
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = Result<
+                        (Library, Vec<LibrariesRelatedTags>, Vec<LibraryPath>),
+                        SdkError,
+                    >,
+                > + Send
+                + '_,
+        >,
+    > {
         Box::pin(async move { self.post("/library/add", &payload).await })
     }
 
@@ -383,8 +385,6 @@ impl Api for HttpApi {
         Box::pin(async move { self.get("/library/types/all").await })
     }
 
-    // Tag
-
     fn tag_get(
         &self,
         tid: u64,
@@ -399,13 +399,6 @@ impl Api for HttpApi {
         Box::pin(async move { self.post("/tag/add", &payload).await })
     }
 
-    fn tag_delete(
-        &self,
-        tid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
-        Box::pin(async move { self.post_query("/tag/delete", &format!("tid={tid}")).await })
-    }
-
     fn tag_query(
         &self,
         params: TagQueryRequest,
@@ -415,8 +408,6 @@ impl Api for HttpApi {
             self.get(&format!("/tag/query{qs}")).await
         })
     }
-
-    // Tag Group
 
     fn tag_group_get(
         &self,
@@ -457,8 +448,6 @@ impl Api for HttpApi {
     ) -> Pin<Box<dyn Future<Output = Result<Vec<TagCatalogEntry>, SdkError>> + Send + '_>> {
         Box::pin(async move { self.get("/tag/catalog").await })
     }
-
-    // Resource
 
     fn resource_get(
         &self,
@@ -521,30 +510,12 @@ impl Api for HttpApi {
         })
     }
 
-    fn resource_remove_tag(
-        &self,
-        rid: u64,
-        tag_ids: Vec<u64>,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
-        Box::pin(async move {
-            let _: String = self
-                .post(
-                    &format!("/resource/{rid}/tag/remove"),
-                    &serde_json::json!({ "tags": tag_ids }),
-                )
-                .await?;
-            Ok(())
-        })
-    }
-
     fn resource_get_metadata(
         &self,
         rid: u64,
     ) -> Pin<Box<dyn Future<Output = Result<serde_json::Value, SdkError>> + Send + '_>> {
         Box::pin(async move { self.get(&format!("/resource/{rid}/metadata")).await })
     }
-
-    // Acl
 
     fn acl_query_role(
         &self,
@@ -599,8 +570,6 @@ impl Api for HttpApi {
         Box::pin(async move { self.post("/user/acl/role/permission/add", &payload).await })
     }
 
-    // Plugin
-
     fn plugin_info(&self) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
         Box::pin(async move { self.get("/plugin/info").await })
     }
@@ -632,8 +601,6 @@ impl Api for HttpApi {
     ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
         Box::pin(async move { self.post_path(&format!("/plugin/{id}/disable")).await })
     }
-
-    // Scanner
 
     fn scanner_scan(
         &self,
@@ -667,8 +634,6 @@ impl Api for HttpApi {
         Box::pin(async move { self.post("/scanner/task/add", &payload).await })
     }
 
-    // Metadata
-
     fn metadata_query(
         &self,
         root_node: u64,
@@ -689,8 +654,6 @@ impl Api for HttpApi {
         Box::pin(async move { self.get(&format!("/metadata/{rid}")).await })
     }
 
-    // Path
-
     fn path_sub_path(
         &self,
         path: String,
@@ -704,16 +667,12 @@ impl Api for HttpApi {
         })
     }
 
-    // Init
-
     fn initialize(
         &self,
         payload: InitializeConfig,
     ) -> Pin<Box<dyn Future<Output = Result<InitStatus, SdkError>> + Send + '_>> {
         Box::pin(async move { self.post("/initialize", &payload).await })
     }
-
-    // Search
 
     fn search(
         &self,
@@ -752,8 +711,6 @@ impl Api for HttpApi {
         })
     }
 
-    // Docs
-
     fn openapi(&self) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
         Box::pin(async move { self.get_text("/openapi.yaml").await })
     }
@@ -761,8 +718,6 @@ impl Api for HttpApi {
     fn docs(&self) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
         Box::pin(async move { self.get_text("/docs").await })
     }
-
-    // File / Avatar
 
     fn user_upload_avatar(
         &self,

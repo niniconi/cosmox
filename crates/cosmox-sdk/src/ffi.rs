@@ -1,9 +1,16 @@
 use std::{ffi::CStr, os::raw::c_char, sync::OnceLock};
 
 use crate::{
-    Api, Backend, create_client,
+    Api, create_client,
     types::{UserLogin, UserLoginIdent},
 };
+
+#[cfg(feature = "web")]
+use crate::transport::web::HttpApi;
+#[cfg(feature = "ipc")]
+use crate::transport::ipc::IpcApi;
+#[cfg(feature = "direct")]
+use crate::transport::direct::DirectApi;
 
 // Global tokio runtime for FFI blocking
 
@@ -36,15 +43,16 @@ pub extern "C" fn cosmox_client_new(
     let backend_name = cstr(backend);
     let hostname = cstr(hostname);
 
-    let be = match backend_name {
-        "web" => Backend::Web,
-        "ipc" => Backend::Ipc,
-        "direct" => Backend::Direct,
+    match backend_name {
+        "web" => Box::into_raw(Box::new(create_client::<HttpApi>(hostname, port)))
+            as *mut std::ffi::c_void,
+        "ipc" => Box::into_raw(Box::new(create_client::<IpcApi>(hostname, port)))
+            as *mut std::ffi::c_void,
+        "direct" => Box::into_raw(Box::new(create_client::<DirectApi>(
+            hostname, port,
+        ))) as *mut std::ffi::c_void,
         _ => return std::ptr::null_mut(),
-    };
-
-    let client = create_client(be, hostname, port);
-    Box::into_raw(Box::new(client)) as *mut std::ffi::c_void
+    }
 }
 
 /// Free a cosmox client created with cosmox_client_new.

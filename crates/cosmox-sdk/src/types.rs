@@ -110,6 +110,20 @@ pub struct Library {
     pub last_update_datetime: NaiveDateTime,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct LibrariesRelatedTags {
+    pub lrtid: u64,
+    pub lid: u64,
+    pub tid: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LibraryPath {
+    pub lpid: u64,
+    pub lid: u64,
+    pub path: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct LibraryAdd {
     pub name: String,
