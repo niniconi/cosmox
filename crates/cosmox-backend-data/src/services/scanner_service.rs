@@ -246,7 +246,7 @@ pub async fn store_metadata(
             metadata_path
         );
     }
-    if let Err(err) = inner(lid, metadata, metadata_path, context, db).await {
+    if let Err(err) = inner(lid, metadata, metadata_path, context, db, 0).await {
         log::error!("Failed to store metadata: {err}");
     }
     return Ok(());
@@ -257,6 +257,7 @@ pub async fn store_metadata(
         path: PathBuf,
         context: ScannerContext,
         db: Arc<DatabaseConnection>,
+        level: u64,
     ) -> Pin<Box<dyn Future<Output = Result<(), ScannerError>> + Send>> {
         let (path_mapping, tags) = context;
 
@@ -302,14 +303,18 @@ pub async fn store_metadata(
             }
 
             let metadata_snapshot = metadata.lock().unwrap().clone();
-            let rid =
-                resource_service::add_resource_by_metadata(lid, &metadata_snapshot, db.clone())
-                    .await
-                    .map_err(|err| {
-                        ScannerError::InternalError(format!(
-                            "Add resource by metadata for library {lid} failed: {err}"
-                        ))
-                    })?;
+            let rid = resource_service::add_resource_by_metadata(
+                lid,
+                &metadata_snapshot,
+                level,
+                db.clone(),
+            )
+            .await
+            .map_err(|err| {
+                ScannerError::InternalError(format!(
+                    "Add resource by metadata for library {lid} failed: {err}"
+                ))
+            })?;
 
             if !inserted_tags.is_empty() {
                 let _ = resource_service::add_tags_for_resource(rid, inserted_tags).await;
@@ -343,6 +348,7 @@ pub async fn store_metadata(
                             path.clone(),
                             (path_mapping.clone(), tags.clone()),
                             db.clone(),
+                            level + 1,
                         )
                     })
                     .collect::<Vec<_>>()

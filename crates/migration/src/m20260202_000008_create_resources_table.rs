@@ -32,9 +32,10 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(
-                        ColumnDef::new(Resources::MetadataIndex)
+                        ColumnDef::new(Resources::Level)
                             .big_unsigned()
-                            .null(),
+                            .not_null()
+                            .comment("The purpose of this field is to record the nesting level of the current resource, starting the count from 0."),
                     )
                     .col(ColumnDef::new(Resources::Cover).big_unsigned().null())
                     .foreign_key(
@@ -47,19 +48,11 @@ impl MigrationTrait for Migration {
                     )
                     .foreign_key(
                         ForeignKey::create()
-                            .name("fk-resources-metadata_index")
-                            .from(Resources::Table, Resources::MetadataIndex)
-                            .to(MetadataIndexes::Table, MetadataIndexes::Mid)
-                            .on_delete(ForeignKeyAction::Restrict)
-                            .on_update(ForeignKeyAction::Restrict),
-                    )
-                    .foreign_key(
-                        ForeignKey::create()
                             .name("fk-resources-cover")
                             .from(Resources::Table, Resources::Cover)
                             .to(PathMappings::Table, PathMappings::Pmid)
-                            .on_delete(ForeignKeyAction::Cascade)
-                            .on_update(ForeignKeyAction::Cascade),
+                            .on_delete(ForeignKeyAction::NoAction)
+                            .on_update(ForeignKeyAction::NoAction),
                     )
                     .to_owned(),
             )
@@ -82,7 +75,7 @@ enum Resources {
     Lid,
     CreateDatetime,
     LastUpdateDatetime,
-    MetadataIndex,
+    Level,
     Cover,
 }
 
@@ -90,12 +83,6 @@ enum Resources {
 enum Libraries {
     Table,
     Lid,
-}
-
-#[derive(DeriveIden)]
-enum MetadataIndexes {
-    Table,
-    Mid,
 }
 
 #[derive(DeriveIden)]

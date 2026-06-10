@@ -58,7 +58,7 @@ rkyv_ipc_view! {
     pub create_datetime: i64,
     #[as_i64]
     pub last_update_datetime: i64,
-    pub metadata_index: Option<u64>,
+    pub level: u64,
     pub cover: Option<u64>,
   }
 }

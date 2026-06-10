@@ -216,6 +216,7 @@ pub struct ResourceAddRequest {
     pub name: String,
     pub lid: u64,
     pub description: Option<String>,
+    pub level: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -354,6 +355,9 @@ pub struct TagQueryRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ResourceQueryRequest {
     pub lid: u64,
+    pub level: Option<u64>,
+    pub min_level: Option<u64>,
+    pub max_level: Option<u64>,
     #[serde(rename = "sort_by")]
     pub sort: Option<String>,
     pub page: Option<u64>,

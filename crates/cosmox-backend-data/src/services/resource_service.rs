@@ -21,14 +21,16 @@ pub enum ResourceError {
     #[error("Resource '{0}' not found.")]
     NotFound(u64),
 
-    #[error("Not authorized to access resource '{0}'.")]
-    Unauthorized(u64),
-
     #[error("Resource with URL '{0}' already exists.")]
     UrlConflict(String),
 
-    #[error("Invalid resource format: {0}")]
-    InvalidFormat(String),
+    #[error(
+        "Parameter conflict: Cannot specify 'level' and 'min_level'/'max_level' at the same time."
+    )]
+    LevelParameterConflict,
+
+    #[error("Parameter error: 'min_level' cannot be greater than 'max_level'.")]
+    InvalidLevelRange,
 
     #[error("Failed to parse resource content: {0}")]
     ContentParseError(String),
@@ -53,6 +55,7 @@ pub struct ResourceAddRequest {
     pub name: String,
     pub lid: u64,
     pub description: Option<String>,
+    pub level: u64,
 }
 
 #[derive(Serialize, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
@@ -66,6 +69,9 @@ pub struct ResourceDeleteRequest {
 #[rkyv(bytecheck())]
 pub struct ResourceQueryRequest {
     lid: u64,
+    level: Option<u64>,
+    min_level: Option<u64>,
+    max_level: Option<u64>,
 }
 
 #[derive(Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
@@ -102,6 +108,7 @@ pub async fn add_resource(payload: ResourceAddRequest) -> Result<u64, ResourceEr
         lid: Set(Some(payload.lid)),
         create_datetime: Set(current_datetime),
         last_update_datetime: Set(current_datetime),
+        level: Set(payload.level),
         ..Default::default()
     };
     let resource = resource
@@ -119,6 +126,7 @@ pub async fn add_resource(payload: ResourceAddRequest) -> Result<u64, ResourceEr
 pub async fn add_resource_by_metadata(
     lid: u64,
     metadata: &Metadata<()>,
+    level: u64,
     db: Arc<DatabaseConnection>,
 ) -> Result<u64, ResourceError> {
     let current_datetime = Utc::now().naive_utc();
@@ -129,6 +137,7 @@ pub async fn add_resource_by_metadata(
         last_update_datetime: Set(current_datetime),
         lid: Set(Some(lid)),
         cover: Set(metadata.cover_file_map_id),
+        level: Set(level),
         ..Default::default()
     };
 
@@ -207,6 +216,28 @@ pub async fn query_resources(
     let db = get_db_connection().await;
     let mut select = resources::Entity::find().filter(resources::Column::Lid.eq(params.lid));
     let mut page = 0;
+
+    match (params.level, params.min_level, params.max_level) {
+        (Some(level), None, None) => {
+            select = select.filter(resources::Column::Level.eq(level));
+        }
+        (None, Some(min_level), Some(max_level)) => {
+            if min_level > max_level {
+                return Err(ResourceError::InvalidLevelRange);
+            }
+            select = select.filter(resources::Column::Level.between(min_level, max_level));
+        }
+        (None, Some(min_level), None) => {
+            select = select.filter(resources::Column::Level.gte(min_level));
+        }
+        (None, None, Some(max_level)) => {
+            select = select.filter(resources::Column::Level.lte(max_level));
+        }
+        (Some(_), Some(_), _) | (Some(_), _, Some(_)) => {
+            return Err(ResourceError::LevelParameterConflict);
+        }
+        _ => (),
+    }
 
     if let Some(inner_page) = params.page {
         page = inner_page;

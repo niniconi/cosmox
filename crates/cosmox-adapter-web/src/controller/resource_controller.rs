@@ -18,9 +18,9 @@ use crate::into_message;
 actix_web_error! {
     ResourceError {
         NotFound() => {code: 404},
-        Unauthorized() => {code: 403},
         UrlConflict() => {code: 409},
-        InvalidFormat() => {code: 400},
+        LevelParameterConflict => {code: 400},
+        InvalidLevelRange => {code: 400},
         ContentParseError() => {code: 400},
         TooLarge() => {code: 413},
         DeletionConflict() => {code: 409},

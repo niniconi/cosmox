@@ -15,10 +15,17 @@ impl MigrationTrait for Migration {
                         ColumnDef::new(MetadataIndexes::Mid)
                             .big_unsigned()
                             .not_null()
-                            .auto_increment()
                             .primary_key(),
                     )
                     .col(ColumnDef::new(MetadataIndexes::Path).string().not_null())
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk-metadata_indexes-resource")
+                            .from(MetadataIndexes::Table, MetadataIndexes::Mid)
+                            .to(Resources::Table, Resources::Rid)
+                            .on_delete(ForeignKeyAction::Cascade)
+                            .on_update(ForeignKeyAction::Cascade),
+                    )
                     .to_owned(),
             )
             .await
@@ -36,4 +43,10 @@ enum MetadataIndexes {
     Table,
     Mid,
     Path,
+}
+
+#[derive(DeriveIden)]
+enum Resources {
+    Table,
+    Rid,
 }

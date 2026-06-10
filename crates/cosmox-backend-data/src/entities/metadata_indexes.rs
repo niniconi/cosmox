@@ -7,11 +7,17 @@ use serde::Serialize;
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize)]
 #[sea_orm(table_name = "metadata_indexes")]
 pub struct Model {
-    #[sea_orm(primary_key)]
+    #[sea_orm(primary_key, auto_increment = false)]
     pub mid: u64,
     pub path: String,
-    #[sea_orm(has_many)]
-    pub resources: HasMany<super::resources::Entity>,
+    #[sea_orm(
+        belongs_to,
+        from = "mid",
+        to = "rid",
+        on_update = "Cascade",
+        on_delete = "Cascade"
+    )]
+    pub resources: HasOne<super::resources::Entity>,
 }
 
 impl ActiveModelBehavior for ActiveModel {}
