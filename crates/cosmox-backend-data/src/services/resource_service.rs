@@ -5,8 +5,8 @@ use common::message::Pagination;
 use cosmox_api::metadata::Metadata;
 use cosmox_macros::page_helper;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait, PaginatorTrait,
-    QueryOrder, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 
@@ -64,7 +64,9 @@ pub struct ResourceDeleteRequest {
 #[page_helper]
 #[derive(Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 #[rkyv(bytecheck())]
-pub struct ResourceQueryRequest {}
+pub struct ResourceQueryRequest {
+    lid: u64,
+}
 
 #[derive(Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 #[rkyv(bytecheck())]
@@ -203,7 +205,7 @@ pub async fn query_resources(
     params: ResourceQueryRequest,
 ) -> Result<(Vec<resources::Model>, Pagination), ResourceError> {
     let db = get_db_connection().await;
-    let mut select = resources::Entity::find();
+    let mut select = resources::Entity::find().filter(resources::Column::Lid.eq(params.lid));
     let mut page = 0;
 
     if let Some(inner_page) = params.page {

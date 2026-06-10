@@ -353,6 +353,7 @@ pub struct TagQueryRequest {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ResourceQueryRequest {
+    pub lid: u64,
     #[serde(rename = "sort_by")]
     pub sort: Option<String>,
     pub page: Option<u64>,
