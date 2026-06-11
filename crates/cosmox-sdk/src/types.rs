@@ -1,5 +1,6 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 // -- API Envelope --
 
@@ -288,8 +289,9 @@ pub struct InitStatus {
 // -- Plugin --
 
 #[derive(Debug, Serialize)]
-pub struct InstallPlugin {
-    pub url: Option<String>,
+pub enum InstallPlugin {
+    Url(Url),
+    Data(Vec<u8>)
 }
 
 // -- Scanner --

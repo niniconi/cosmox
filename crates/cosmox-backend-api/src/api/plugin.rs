@@ -1,7 +1,10 @@
+use bytes::Bytes;
 use cosmox_macros::page_helper;
+use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
 use cosmox_plugin_manager::plugin_manager::PluginManager;
+use url::Url;
 
 use crate::{
     Context, api,
@@ -11,19 +14,28 @@ pub use cosmox_plugin_manager::plugin_manager::PluginError;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InstallPluginParams {
-    pub url: Option<String>,
+    pub url: Option<Url>,
 }
 
 #[page_helper]
 #[derive(Debug, Deserialize)]
 pub struct PluginQueryRequest {}
 
-pub async fn install_plugin(
+pub async fn install_plugin<S, E>(
     ctx: &mut Context<'_>,
-    payload: InstallPluginParams,
-) -> Result<(), PluginError> {
+    params: InstallPluginParams,
+    payload: S,
+) -> Result<Message<()>, ApiError<PluginError>>
+where
+    S: StreamExt<Item = Result<Bytes, E>> + Unpin,
+    E: std::fmt::Display,
+{
     ctx.access_ctx.endpoint = api::Endpoint::InstallPlugin;
-    unimplemented!("Install plugin api is not yet implemented. payload = {payload:#?}")
+    if let Some(url) = params.url {
+        Message::from_service(ctx, PluginManager::install_plugin_from_url(url)).await
+    } else {
+        Message::from_service(ctx, PluginManager::install_plugin_from_stream(payload)).await
+    }
 }
 
 pub async fn uninstall_plugin(ctx: &mut Context<'_>) -> Result<(), PluginError> {

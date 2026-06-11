@@ -1,23 +1,15 @@
-use actix_web::{HttpResponse, Responder, get, post, web};
+use actix_web::{HttpResponse, Responder, get, post, web::{self, Payload}};
 use cosmox_backend_api::{
     Context,
-    api::{self, plugin::PluginError},
+    api::{
+        self,
+        plugin::{InstallPluginParams, PluginError},
+    },
     message,
 };
-use cosmox_macros::{actix_web_error, page_helper};
-use serde::{Deserialize, Serialize};
-use utoipa::{IntoParams, ToSchema};
+use cosmox_macros::actix_web_error;
 
 use crate::into_message;
-
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct InstallPluginParams {
-    pub url: Option<String>,
-}
-
-#[page_helper]
-#[derive(Debug, Deserialize, IntoParams)]
-pub struct PluginQueryRequest {}
 
 actix_web_error! {
     PluginError {
@@ -28,18 +20,27 @@ actix_web_error! {
         LoadFailed() => {code: 500},
         WasmError() => {code: 500},
         IoError() => {code: 500},
-        DownloadError() => {code: 504},
+        HttpTransportError{} => {code: 502},
+        NetworkTransportError{} => {code: 504},
+        StreamTransportError{} => {code: 504},
+        FileSystemError() => {code: 500},
+        PathTraversalAttack() => {code: 400},
+        InvalidPluginPackage() => {code: 422},
         InternalError() => {code: 500},
     }
 }
+
 #[post("/install")]
 pub async fn install_plugin(
     ctx: web::ReqData<Context<'_>>,
-    payload: web::Json<InstallPluginParams>,
+    params: web::Query<InstallPluginParams>,
+    payload: Payload
 ) -> impl Responder {
-    HttpResponse::NotImplemented().body(format!(
-        "Install plugin api is not yet implemented. payload = {payload:#?}"
-    ))
+    into_message!(api::plugin::install_plugin(
+        &mut ctx.into_inner(),
+        params.into_inner(),
+        payload
+    ).await)
 }
 
 #[post("/uninstall")]

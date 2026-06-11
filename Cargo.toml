@@ -89,6 +89,7 @@ cosmox-backend-data = { path = "crates/cosmox-backend-data" }
 cosmox-configuration = { path = "crates/cosmox-configuration" }
 cosmox-macros = { path = "crates/cosmox-macros" }
 cosmox-plugin-manager = { path = "crates/cosmox-plugin-manager" }
+cosmox-plugin-packager = { path = "crates/cosmox-plugin-packager" }
 cosmox-scanner = { path = "crates/cosmox-scanner" }
 cosmox-sdk = { path = "crates/cosmox-sdk" }
 criterion = "0.8.2"

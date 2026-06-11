@@ -1,12 +1,17 @@
 use std::{
     collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
     sync::{Arc, LazyLock, Mutex},
 };
 
 use anyhow::{Result, anyhow};
+use bytes::Bytes;
 use common::default_constants::ascii_letters_number_separators;
 use cosmox_configuration::Configuration;
+use futures_util::StreamExt;
 use lru::LruCache;
+use tokio::{fs::File, io::AsyncWriteExt};
+use url::Url;
 use wasmtime::component::ResourceTable;
 use wasmtime::{Engine, Store};
 use wasmtime_wasi_http::WasiHttpCtx;
@@ -49,8 +54,27 @@ pub enum PluginError {
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 
-    #[error("Network error while downloading plugin '{0}': {1}")]
-    DownloadError(String, String),
+    #[error("Failed to download from {url}. Remote HTTP status: {status}. Reason: {reason}")]
+    HttpTransportError {
+        url: Url,
+        status: u16,
+        reason: String,
+    },
+
+    #[error("Network transport connection lost for {url}. Details: {details}")]
+    NetworkTransportError { url: Url, details: String },
+
+    #[error("Stream transport abort. Details: {details}")]
+    StreamTransportError { details: String },
+
+    #[error("Local storage I/O system layer failure: {0}")]
+    FileSystemError(String),
+
+    #[error("Security block: Malicious relative path detected in tarball: {0}")]
+    PathTraversalAttack(String),
+
+    #[error("Plugin validation failed: {0}")]
+    InvalidPluginPackage(String),
 
     /// Indicates an unexpected server-side issue.
     #[error("Internal server error: {0}")]
@@ -273,7 +297,97 @@ impl PluginManager {
         }
     }
 
-    pub fn install() {}
+    async fn extract_plugin<P: AsRef<Path>>(archive_path: &P) -> Result<(), PluginError> {
+        let dst_path = PathBuf::from(
+            Configuration::get_global_configuration()
+                .cosmox
+                .plugin
+                .path
+                .as_str(),
+        );
+
+        cosmox_plugin_packager::unpack(archive_path, dst_path)
+            .map_err(|err| PluginError::InvalidPluginPackage(err.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn install_plugin_from_url(url: Url) -> Result<(), PluginError> {
+        let resp =
+            reqwest::get(url.clone())
+                .await
+                .inspect_err(|err| log::error!("{err}"))
+                .map_err(|err| PluginError::NetworkTransportError {
+                    url: url.clone(),
+                    details: err.to_string(),
+                })?;
+
+        if resp.status().is_success() {
+            Self::install_plugin_from_stream(resp.bytes_stream()).await
+        } else {
+            Err(PluginError::HttpTransportError {
+                url,
+                status: resp.status().as_u16(),
+                reason: resp.status().to_string(),
+            })
+        }
+    }
+
+    pub async fn install_plugin_from_stream<S, E>(mut payload: S) -> Result<(), PluginError>
+    where
+        S: StreamExt<Item = Result<Bytes, E>> + Unpin,
+        E: std::fmt::Display,
+    {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+
+        let tmp_path = PathBuf::from(format!("/tmp/tmp_plugin_{}.tar.gz", timestamp));
+
+        let mut file = File::create(&tmp_path)
+            .await
+            .inspect_err(|err| log::error!("{err}"))
+            .map_err(|err| {
+                PluginError::FileSystemError(format!("Failed to create tmp file: {}", err))
+            })?;
+
+        log::info!("Downloading plugin to staged path: {:?}", tmp_path);
+
+        while let Some(chunk_result) = payload.next().await {
+            let chunk = match chunk_result {
+                Ok(chunk) => chunk,
+                Err(err) => {
+                    tokio::fs::remove_file(tmp_path)
+                        .await
+                        .inspect_err(|err| log::error!("{err}"))
+                        .map_err(|err| PluginError::InternalError(err.to_string()))?;
+
+                    return Err(PluginError::StreamTransportError {
+                        details: err.to_string(),
+                    });
+                }
+            };
+
+            file.write_all(&chunk)
+                .await
+                .inspect_err(|err| log::error!("{err}"))
+                .map_err(|err| {
+                    PluginError::FileSystemError(format!("Failed to write chunk to disk: {}", err))
+                })?;
+        }
+
+        file.flush()
+            .await
+            .inspect_err(|err| log::error!("{err}"))
+            .map_err(|err| {
+                PluginError::FileSystemError(format!("Failed to flush file: {}", err))
+            })?;
+
+        log::info!("Plugin tarball successfully saved at {:?}", tmp_path);
+
+        Self::extract_plugin(&tmp_path).await?;
+        Ok(())
+    }
 
     pub fn uninstall() {}
 

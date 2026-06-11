@@ -578,7 +578,18 @@ impl Api for HttpApi {
         &self,
         payload: InstallPlugin,
     ) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
-        Box::pin(async move { self.post("/plugin/install", &payload).await })
+        Box::pin(async move {
+            match payload {
+                InstallPlugin::Url(url) => {
+                    self.post_query("/plugin/install", &format!("url={url}"))
+                        .await
+                }
+                InstallPlugin::Data(data) => {
+                    self.post_binary("/plugin/install", data)
+                        .await
+                }
+            }
+        })
     }
 
     fn plugin_uninstall(

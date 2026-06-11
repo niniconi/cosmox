@@ -10,12 +10,15 @@ authors.workspace = true
 [dependencies]
 anyhow = { workspace = true }
 bincode = { workspace = true }
+bytes = { workspace = true }
 common = { workspace = true }
 cosmox-agent = { workspace = true }
 cosmox-api = { workspace = true }
 cosmox-backend-data = { workspace = true }
 cosmox-configuration = { workspace = true }
+cosmox-plugin-packager = { workspace = true }
 cosmox-macros = { workspace = true }
+futures-util = { workspace = true }
 log = { workspace = true }
 lru = { workspace = true }
 serde = { workspace = true, features = ["alloc", "derive", "rc", "serde_derive", "std"] }
@@ -28,3 +31,5 @@ url = { workspace = true }
 wasmtime = { workspace = true, features = ["async"] }
 wasmtime-wasi = { workspace = true }
 wasmtime-wasi-http = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
