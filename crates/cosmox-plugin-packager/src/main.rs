@@ -19,6 +19,8 @@ struct Args {
 }
 
 fn main() -> Result<()> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
     let args = Args::parse();
     let target = if args.release {
         PackFromProfile::Release
@@ -26,6 +28,10 @@ fn main() -> Result<()> {
         PackFromProfile::Debug
     };
 
+    log::info!(
+        "Packaging plugin from {:?} to {:?}",
+        args.input, args.output
+    );
     pack(args.input.as_str(), args.output.as_str(), target)?;
     Ok(())
 }

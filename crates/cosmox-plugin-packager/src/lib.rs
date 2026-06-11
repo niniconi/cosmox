@@ -31,18 +31,6 @@ pub enum PackFromProfile {
     Release,
 }
 
-macro_rules! info{
-    ($fmt:literal $(, $args:expr)*) => {
-        println!(concat!("\n▶ ", $fmt), $($args)*);
-    };
-}
-
-macro_rules! complete {
-    ($fmt:literal $(, $args:expr)*) => {
-        println!(concat!("\n✅ ", $fmt), $($args)*);
-    };
-}
-
 fn copy_dir(src: &PathBuf, dst: &Path) -> Result<()> {
     let mut src_files: Vec<PathBuf> = vec![];
 
@@ -78,7 +66,7 @@ fn copy_dir(src: &PathBuf, dst: &Path) -> Result<()> {
         if dst.exists() && dst.is_dir() {
             let dst_file = dst.join(file_path);
 
-            println!("copy file from {:?} to {:?}", src_file, dst_file);
+            log::debug!("copy file from {:?} to {:?}", src_file, dst_file);
             fs::copy(&src_file, &dst_file)?;
         } else if let Some(dst_parent) = dst.parent()
             && dst_parent.is_dir()
@@ -87,7 +75,7 @@ fn copy_dir(src: &PathBuf, dst: &Path) -> Result<()> {
             let dst_dir_path = dst_parent.join(dst_dir);
             let dst_file = dst_dir_path.join(file_path);
             fs::create_dir_all(dst_dir_path).context("")?;
-            println!("copy file from {:?} to {:?}", src_file, dst_file);
+            log::debug!("copy file from {:?} to {:?}", src_file, dst_file);
 
             fs::copy(&src_file, &dst_file)?;
         }
@@ -141,15 +129,13 @@ pub fn pack(src_path: &str, dst_path: &str, pack_profile: PackFromProfile) -> Re
         .join(&wasm_file_name);
     let target_plugin_wasm_file_path = target_plugin_wasm_dir.join(&wasm_file_name);
 
-    println!("\n--- Task Started: Building and Packaging WASM Plugin ---");
+    log::info!("--- Task Started: Building and Packaging WASM Plugin ---");
 
     // Create output directory
     fs::create_dir_all(&target_plugin_build_dir)?;
 
-    // ------------------------------------------------------------
     // Task 1: Create Plugin Manifest File (yaml)
-    // ------------------------------------------------------------
-    info!("Creating plugin manifest file...");
+    log::info!("▶ Creating plugin manifest file...");
 
     let manifest = About {
         name: repo_name.clone(),
@@ -172,30 +158,24 @@ pub fn pack(src_path: &str, dst_path: &str, pack_profile: PackFromProfile) -> Re
     ))?;
     write!(about_file, "{about_yaml}")?;
 
-    complete!("Manifest file created: {}", about_file_name);
+    log::info!("✅ Manifest file created: {}", about_file_name);
 
-    // ------------------------------------------------------------
     // Task 2: Copy WASM
-    // ------------------------------------------------------------
-    info!("Copy WASM file {:?}", repo_wasm_file_path);
+    log::info!("▶ Copy WASM file {:?}", repo_wasm_file_path);
 
     fs::create_dir_all(target_plugin_wasm_dir)?;
     fs::copy(repo_wasm_file_path, target_plugin_wasm_file_path)?;
 
-    complete!("All WASM files copied.");
+    log::info!("✅ All WASM files copied.");
 
-    // ------------------------------------------------------------
     // Task 3: Copy static files
-    // ------------------------------------------------------------
-    info!("Copying static files...");
+    log::info!("▶ Copying static files...");
     copy_dir(&source_plugin_define_dir, &target_plugin_define_dir)?;
     copy_dir(&source_plugin_asset_dir, &target_plugin_asset_dir)?;
-    complete!("All static files copied.");
+    log::info!("✅ All static files copied.");
 
-    // ------------------------------------------------------------
     // Task 4: Package into a .tar.gz file
-    // ------------------------------------------------------------
-    info!("Packaging files into a tar.gz archive...");
+    log::info!("▶ Packaging files into a tar.gz archive...");
     if !target_plugin_build_dir.is_dir() {
         return Err(anyhow::anyhow!(
             "Source path must be a directory: {:?}",
@@ -222,9 +202,10 @@ pub fn pack(src_path: &str, dst_path: &str, pack_profile: PackFromProfile) -> Re
     tar_builder
         .finish()
         .with_context(|| "Failed to finalize tar.gz archive".to_string())?;
-    println!(
-        "Successfully compressed {:?} to {:?}",
-        target_plugin_build_dir, final_archive_file_path
+    log::info!(
+        "✅ Successfully compressed {:?} to {:?}",
+        target_plugin_build_dir,
+        final_archive_file_path
     );
 
     Ok(())
