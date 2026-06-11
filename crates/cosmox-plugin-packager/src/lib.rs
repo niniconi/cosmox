@@ -32,7 +32,7 @@ pub enum PackFromProfile {
     Release,
 }
 
-fn copy_dir(src: &PathBuf, dst: &Path) -> Result<()> {
+fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
     let mut src_files: Vec<PathBuf> = vec![];
 
     // find all src file
@@ -84,8 +84,12 @@ fn copy_dir(src: &PathBuf, dst: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn pack(src_path: &str, dst_path: &str, pack_profile: PackFromProfile) -> Result<()> {
-    let repo_dir = PathBuf::from(src_path);
+pub fn pack(
+    src_path: impl AsRef<Path>,
+    dst_path: impl AsRef<Path>,
+    pack_profile: PackFromProfile,
+) -> Result<()> {
+    let repo_dir = PathBuf::from(src_path.as_ref());
 
     let raw_cargo_toml = fs::read_to_string(repo_dir.join("Cargo.toml")).unwrap();
     let cargo_toml: CargoToml = toml::from_str(raw_cargo_toml.as_str())?;
@@ -111,7 +115,9 @@ pub fn pack(src_path: &str, dst_path: &str, pack_profile: PackFromProfile) -> Re
     let source_plugin_asset_dir = repo_dir.join("assets");
     let source_plugin_define_dir = repo_dir.join("defines");
 
-    let target_plugin_dir = PathBuf::from(dst_path).join(profile).join(repo_name);
+    let target_plugin_dir = PathBuf::from(dst_path.as_ref())
+        .join(profile)
+        .join(repo_name);
     let target_plugin_build_dir = target_plugin_dir.join("build");
     let target_plugin_wasm_dir = target_plugin_build_dir.join("wasm");
     let target_plugin_define_dir = target_plugin_build_dir.join("defines");
@@ -212,9 +218,9 @@ pub fn pack(src_path: &str, dst_path: &str, pack_profile: PackFromProfile) -> Re
     Ok(())
 }
 
-pub fn unpack(archive_path: &str, dst_path: &str) -> Result<()> {
-    let archive = PathBuf::from(archive_path);
-    let dst = PathBuf::from(dst_path);
+pub fn unpack(archive_path: impl AsRef<Path>, dst_path: impl AsRef<Path>) -> Result<()> {
+    let archive = PathBuf::from(archive_path.as_ref());
+    let dst = PathBuf::from(dst_path.as_ref());
 
     log::info!("--- Extracting plugin archive ---");
     log::info!("▶ Extracting {:?} to {:?}", archive, dst);

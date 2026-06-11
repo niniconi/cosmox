@@ -44,22 +44,18 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Pack {
-            input,
-            output,
-            release,
-        } => {
+        Command::Pack { input, output, release } => {
             let target = if release {
                 PackFromProfile::Release
             } else {
                 PackFromProfile::Debug
             };
             info!("Packaging plugin from {:?} to {:?}", input, output);
-            pack(input.as_str(), output.as_str(), target)?;
+            pack(&input, &output, target)?;
         }
         Command::Unpack { input, output } => {
             info!("Unpacking archive {:?} to {:?}", input, output);
-            unpack(input.as_str(), output.as_str())?;
+            unpack(&input, &output)?;
         }
     }
 
