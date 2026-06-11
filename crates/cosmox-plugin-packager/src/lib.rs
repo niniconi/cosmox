@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use flate2::Compression;
+use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
@@ -208,5 +209,24 @@ pub fn pack(src_path: &str, dst_path: &str, pack_profile: PackFromProfile) -> Re
         final_archive_file_path
     );
 
+    Ok(())
+}
+
+pub fn unpack(archive_path: &str, dst_path: &str) -> Result<()> {
+    let archive = PathBuf::from(archive_path);
+    let dst = PathBuf::from(dst_path);
+
+    log::info!("--- Extracting plugin archive ---");
+    log::info!("▶ Extracting {:?} to {:?}", archive, dst);
+
+    let tar_gz =
+        File::open(&archive).with_context(|| format!("Failed to open archive: {:?}", archive))?;
+    let decoder = GzDecoder::new(tar_gz);
+    let mut archive_reader = tar::Archive::new(decoder);
+    archive_reader
+        .unpack(&dst)
+        .with_context(|| format!("Failed to extract to {:?}", dst))?;
+
+    log::info!("✅ Successfully extracted {:?} to {:?}", archive, dst);
     Ok(())
 }
