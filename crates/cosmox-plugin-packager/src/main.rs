@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use cosmox_plugin_pack::{PackFromProfile, pack};
+use cosmox_plugin_packager::{PackFromProfile, pack};
 
 #[derive(clap::Parser, Debug)]
 #[command(author, version, about, long_about = None)]

@@ -1,5 +1,5 @@
 [package]
-name = "cosmox-plugin-pack"
+name = "cosmox-plugin-packager"
 version.workspace = true
 edition.workspace = true
 keywords.workspace = true

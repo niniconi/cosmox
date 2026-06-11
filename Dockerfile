@@ -37,7 +37,7 @@ COPY crates/cosmox-ffmpeg/Cargo.toml          crates/cosmox-ffmpeg/
 COPY crates/cosmox-lua/Cargo.toml             crates/cosmox-lua/
 COPY crates/cosmox-macros/Cargo.toml          crates/cosmox-macros/
 COPY crates/cosmox-plugin-manager/Cargo.toml  crates/cosmox-plugin-manager/
-COPY crates/cosmox-plugin-pack/Cargo.toml     crates/cosmox-plugin-pack/
+COPY crates/cosmox-plugin-packager/Cargo.toml crates/cosmox-plugin-packager/
 COPY crates/cosmox-python/Cargo.toml          crates/cosmox-python/
 COPY crates/cosmox-scanner/Cargo.toml         crates/cosmox-scanner/
 COPY crates/cosmox-sdk/Cargo.toml             crates/cosmox-sdk/
@@ -58,7 +58,7 @@ RUN mkdir -p src \
     crates/cosmox-lua/src \
     crates/cosmox-macros/src \
     crates/cosmox-plugin-manager/src \
-    crates/cosmox-plugin-pack/src \
+    crates/cosmox-plugin-packager/src \
     crates/cosmox-python/src \
     crates/cosmox-scanner/src \
     crates/cosmox-sdk/src \
