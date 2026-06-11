@@ -199,7 +199,7 @@ pub fn pack(
     let enc = GzEncoder::new(tar_gz, Compression::default());
     let mut tar_builder = Builder::new(enc);
     tar_builder
-        .append_dir_all(".", &target_plugin_build_dir)
+        .append_dir_all(repo_name, &target_plugin_build_dir)
         .with_context(|| {
             format!(
                 "Failed to append directory {:?} to tar archive",
