@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
-    sync::{Arc, LazyLock, Mutex},
+    sync::{Arc, LazyLock, Mutex, MutexGuard},
 };
 
 use anyhow::{Result, anyhow};
@@ -23,7 +23,7 @@ use crate::{
     Plugin, WasmComponent,
     plugin_lifecycle::plugin_wasm_lifecycle,
     plugin_loader::{
-        ComponentRunStates, CosmoxPluginData, PluginLoadError, bindings, finalize_dependency,
+        self, ComponentRunStates, CosmoxPluginData, PluginLoadError, bindings, finalize_dependency,
         load_builtin_plugins, load_external_plugins,
     },
 };
@@ -140,6 +140,11 @@ impl PluginManager {
     #[inline]
     pub fn get_plugin_manager() -> Arc<PluginManager> {
         Arc::new(PLUGIN_MANAGER.lock().unwrap().clone())
+    }
+
+    #[inline]
+    pub fn get_plugin_manager_mut<'a>() -> MutexGuard<'a, PluginManager> {
+        PLUGIN_MANAGER.lock().unwrap()
     }
 
     /// Generate a plugin_id from plugin manager
@@ -297,7 +302,7 @@ impl PluginManager {
         }
     }
 
-    async fn extract_plugin<P: AsRef<Path>>(archive_path: &P) -> Result<(), PluginError> {
+    async fn extract_plugin<P: AsRef<Path>>(archive_path: &P) -> Result<PathBuf, PluginError> {
         let dst_path = PathBuf::from(
             Configuration::get_global_configuration()
                 .cosmox
@@ -307,22 +312,21 @@ impl PluginManager {
         );
 
         cosmox_plugin_packager::unpack(archive_path, dst_path)
-            .map_err(|err| PluginError::InvalidPluginPackage(err.to_string()))?;
-        Ok(())
+            .inspect_err(|err| log::error!("{err}"))
+            .map_err(|err| PluginError::InvalidPluginPackage(err.to_string()))
     }
 
     pub async fn install_plugin_from_url(url: Url) -> Result<(), PluginError> {
-        let resp =
-            reqwest::get(url.clone())
-                .await
-                .inspect_err(|err| log::error!("{err}"))
-                .map_err(|err| PluginError::NetworkTransportError {
-                    url: url.clone(),
-                    details: err.to_string(),
-                })?;
+        let resp = reqwest::get(url.clone())
+            .await
+            .inspect_err(|err| log::error!("{err}"))
+            .map_err(|err| PluginError::NetworkTransportError {
+                url: url.clone(),
+                details: err.to_string(),
+            })?;
 
         if resp.status().is_success() {
-            Self::install_plugin_from_stream(resp.bytes_stream()).await
+            PluginManager::install_plugin_from_stream(resp.bytes_stream()).await
         } else {
             Err(PluginError::HttpTransportError {
                 url,
@@ -385,7 +389,14 @@ impl PluginManager {
 
         log::info!("Plugin tarball successfully saved at {:?}", tmp_path);
 
-        Self::extract_plugin(&tmp_path).await?;
+        let plugin_path = PluginManager::extract_plugin(&tmp_path).await?;
+
+        log::info!("Unpack plugin archive successfully.");
+
+        let plugin = plugin_loader::load(plugin_path)?;
+        let id = plugin.id() as usize;
+        PluginManager::get_plugin_manager_mut().plugins[id] = Some(plugin);
+
         Ok(())
     }
 

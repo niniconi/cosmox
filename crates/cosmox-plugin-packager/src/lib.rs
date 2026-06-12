@@ -1,12 +1,12 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use tar::Builder;
+use std::io::{Read, Write};
+use std::path::{Component, Path, PathBuf};
+use tar::{Archive, Builder};
 
 use crate::cargo::CargoToml;
 
@@ -218,7 +218,73 @@ pub fn pack(
     Ok(())
 }
 
-pub fn unpack(archive_path: impl AsRef<Path>, dst_path: impl AsRef<Path>) -> Result<()> {
+/// Validates the archive structure and returns its single root directory path.
+///
+/// All entries within the archive must reside under this single root directory.
+/// The root itself must be a directory, and no file or secondary directory is
+/// permitted to exist at the root level.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The archive is empty.
+/// - Any path traversal attempt (e.g., `..`) is detected.
+/// - Multiple root directories or root-level files are found.
+/// - The dynamically detected root is a file rather than a directory.
+pub fn validate_archive_structure<T: Read>(archive: &mut Archive<T>) -> Result<PathBuf> {
+    // Since Archive<T> requires exclusive access to iterate via entries(),
+    // but we only have a shared reference `&Archive<T>`, we must use unchecked_entries().
+    let entries = archive
+        .entries()
+        .context("Failed to read archive entries")?;
+
+    let mut detected_root: Option<PathBuf> = None;
+
+    for entry_result in entries {
+        let entry = entry_result.context("Corrupted entry encountered in archive")?;
+        let path = entry.path().context("Invalid path found in entry")?;
+
+        if path.components().any(|c| c == Component::ParentDir) {
+            return Err(anyhow!(
+                "Security Warning: Path traversal detected in {:?}",
+                path
+            ));
+        }
+
+        let mut components = path.components();
+        let first_component = match components.next() {
+            Some(Component::Normal(p)) => Path::new(p),
+            _ => return Err(anyhow!("Invalid path structure: {:?}", path)),
+        };
+
+        match &detected_root {
+            None => {
+                detected_root = Some(first_component.to_path_buf());
+
+                if path == first_component && !entry.header().entry_type().is_dir() {
+                    return Err(anyhow!(
+                        "The root element '{:?}' must be a directory, but found a file.",
+                        first_component
+                    ));
+                }
+            }
+            Some(root) => {
+                if first_component != root {
+                    return Err(anyhow!(
+                        "Structure violation: Expected root '{:?}', but found '{:?}' in path {:?}",
+                        root,
+                        first_component,
+                        path
+                    ));
+                }
+            }
+        }
+    }
+
+    detected_root.ok_or_else(|| anyhow!("Validation failed: The archive is empty."))
+}
+
+pub fn unpack(archive_path: impl AsRef<Path>, dst_path: impl AsRef<Path>) -> Result<PathBuf> {
     let archive = PathBuf::from(archive_path.as_ref());
     let dst = PathBuf::from(dst_path.as_ref());
 
@@ -229,10 +295,11 @@ pub fn unpack(archive_path: impl AsRef<Path>, dst_path: impl AsRef<Path>) -> Res
         File::open(&archive).with_context(|| format!("Failed to open archive: {:?}", archive))?;
     let decoder = GzDecoder::new(tar_gz);
     let mut archive_reader = tar::Archive::new(decoder);
+    let archive_root_directory = validate_archive_structure(&mut archive_reader)?;
     archive_reader
         .unpack(&dst)
         .with_context(|| format!("Failed to extract to {:?}", dst))?;
 
     log::info!("✅ Successfully extracted {:?} to {:?}", archive, dst);
-    Ok(())
+    Ok(dst.join(archive_root_directory))
 }
