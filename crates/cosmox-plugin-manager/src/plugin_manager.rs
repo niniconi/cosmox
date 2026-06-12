@@ -20,12 +20,12 @@ pub use super::plugin_loader::bindings::cosmox::plugin::context as bindings_cont
 pub use super::plugin_loader::bindings::cosmox::plugin::cosmox_types as bindings_cosmox_types;
 
 use crate::{
-    Plugin, WasmComponent,
     plugin_lifecycle::plugin_wasm_lifecycle,
     plugin_loader::{
         self, ComponentRunStates, CosmoxPluginData, PluginLoadError, bindings, finalize_dependency,
         load_builtin_plugins, load_external_plugins,
     },
+    types::{Plugin, PluginId, PluginName, PluginWasmId, WasmComponent},
 };
 
 use wasmtime_wasi::WasiCtxBuilder;
@@ -89,10 +89,10 @@ pub struct PluginManager {
     pub plugin_enable_count: usize,
     pub plugin_count: usize,
 
-    pub plugin_names: HashMap<String, u64>,
+    pub plugin_names: HashMap<PluginName, PluginId>,
     pub plugins: Vec<Option<Plugin>>,
 
-    pub wasm_list: HashMap<u64, Arc<WasmComponent>>,
+    pub wasm_list: HashMap<PluginWasmId, Arc<WasmComponent>>,
 
     /// ```rust
     /// let event: Event;
@@ -101,22 +101,23 @@ pub struct PluginManager {
     pub event_map_to_wasm_components: HashMap<cosmox_api::EventKey, Vec<Arc<WasmComponent>>>,
 
     // pub id_map_to_name: HashMap<u64, String>,
-    plugin_autoincrement: u64,
-    wasm_autoincrement: u64,
+    plugin_autoincrement: PluginId,
+    wasm_autoincrement: PluginWasmId,
 
     pub supported_media_types: HashSet<String>,
 }
 
-static SHARE: LazyLock<Mutex<LruCache<u64, Store<ComponentRunStates>>>> = LazyLock::new(|| {
-    log::info!(
-        "[Thread {:?}] Initializing LRU Cache for Stores. Thread ID: {:?}",
-        std::thread::current().id(),
-        std::thread::current().id()
-    );
-    // Sets the maximum capacity of the LRU cache. For example, each thread retains a maximum of 10 Store instances.
-    // If you need more Store instances to be active simultaneously on the same thread, you can adjust this number.
-    Mutex::new(LruCache::new(std::num::NonZeroUsize::new(10).unwrap()))
-});
+static SHARE: LazyLock<Mutex<LruCache<PluginWasmId, Store<ComponentRunStates>>>> =
+    LazyLock::new(|| {
+        log::info!(
+            "[Thread {:?}] Initializing LRU Cache for Stores. Thread ID: {:?}",
+            std::thread::current().id(),
+            std::thread::current().id()
+        );
+        // Sets the maximum capacity of the LRU cache. For example, each thread retains a maximum of 10 Store instances.
+        // If you need more Store instances to be active simultaneously on the same thread, you can adjust this number.
+        Mutex::new(LruCache::new(std::num::NonZeroUsize::new(10).unwrap()))
+    });
 
 static PLUGIN_MANAGER: LazyLock<Mutex<PluginManager>> = LazyLock::new(|| {
     let mut config = wasmtime::Config::new();
@@ -129,8 +130,8 @@ static PLUGIN_MANAGER: LazyLock<Mutex<PluginManager>> = LazyLock::new(|| {
     Mutex::new(PluginManager {
         engine,
         plugins,
-        plugin_autoincrement: 0,
-        wasm_autoincrement: 0,
+        plugin_autoincrement: PluginId::new(0),
+        wasm_autoincrement: PluginWasmId::new(0),
         ..Default::default()
     })
 });
@@ -154,21 +155,21 @@ impl PluginManager {
     /// assert_ne!(plugin_id0, plugin_id1);
     /// ```
     #[inline]
-    pub fn get_plugin_autoincrement() -> u64 {
+    pub fn get_plugin_autoincrement() -> PluginId {
         PLUGIN_MANAGER.lock().unwrap()._get_plugin_autoincrement()
     }
 
-    fn _get_plugin_autoincrement(&mut self) -> u64 {
-        self.plugin_autoincrement += 1;
+    fn _get_plugin_autoincrement(&mut self) -> PluginId {
+        self.plugin_autoincrement += PluginId::new(1);
         self.plugin_autoincrement
     }
 
     #[inline]
-    pub fn insert_plugin_name(name: String, id: u64) {
+    pub fn insert_plugin_name(name: PluginName, id: PluginId) {
         PLUGIN_MANAGER.lock().unwrap()._insert_plugin_name(name, id)
     }
 
-    pub fn _insert_plugin_name(&mut self, name: String, id: u64) {
+    pub fn _insert_plugin_name(&mut self, name: PluginName, id: PluginId) {
         self.plugin_names.insert(name, id);
     }
 
@@ -179,12 +180,12 @@ impl PluginManager {
     /// assert_ne!(wasm_id0, wasm_id1);
     /// ```
     #[inline]
-    pub fn get_wasm_autoincrement() -> u64 {
+    pub fn get_wasm_autoincrement() -> PluginWasmId {
         PLUGIN_MANAGER.lock().unwrap()._get_wasm_autoincrement()
     }
 
-    fn _get_wasm_autoincrement(&mut self) -> u64 {
-        self.wasm_autoincrement += 1;
+    fn _get_wasm_autoincrement(&mut self) -> PluginWasmId {
+        self.wasm_autoincrement += PluginWasmId::new(1);
         self.wasm_autoincrement
     }
 
@@ -226,12 +227,12 @@ impl PluginManager {
             );
         }
         for plugin in builtin_plugins {
-            let id = plugin.id() as usize;
+            let id = usize::from(plugin.id());
             self.plugins[id] = Some(plugin);
         }
 
         for plugin in external_plugins {
-            let id = plugin.id() as usize;
+            let id = usize::from(plugin.id());
             self.plugins[id] = Some(plugin);
         }
     }
@@ -394,7 +395,7 @@ impl PluginManager {
         log::info!("Unpack plugin archive successfully.");
 
         let plugin = plugin_loader::load(plugin_path)?;
-        let id = plugin.id() as usize;
+        let id = usize::from(plugin.id());
         PluginManager::get_plugin_manager_mut().plugins[id] = Some(plugin);
 
         Ok(())
@@ -518,10 +519,8 @@ impl PluginManager {
     }
 
     #[inline]
-    pub fn register_wasm_component(wasm_id: u64, wasm_component: Arc<WasmComponent>) {
-        PLUGIN_MANAGER
-            .lock()
-            .unwrap()
+    pub fn register_wasm_component(wasm_id: PluginWasmId, wasm_component: Arc<WasmComponent>) {
+        PluginManager::get_plugin_manager_mut()
             .wasm_list
             .insert(wasm_id, wasm_component);
     }
@@ -529,7 +528,7 @@ impl PluginManager {
     #[inline]
     pub fn bind_event_for_wasm(
         event: cosmox_api::EventKey,
-        wasm_id: u64,
+        wasm_id: PluginWasmId,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut plugin_manager = PLUGIN_MANAGER.lock().unwrap();
         if let Some(wasm_component) = plugin_manager.wasm_list.get(&wasm_id) {
@@ -551,7 +550,7 @@ impl PluginManager {
     #[inline]
     pub fn unbind_event_from_wasm(
         event: cosmox_api::EventKey,
-        wasm_id: u64,
+        wasm_id: PluginWasmId,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut plugin_manager = PLUGIN_MANAGER.lock().unwrap();
         if let Some(target_event_bind_wasm_componets) =
@@ -633,7 +632,7 @@ impl PluginManager {
     }
 
     /// get wasm list
-    pub fn get_wasm_list() -> Arc<HashMap<u64, Arc<WasmComponent>>> {
+    pub fn get_wasm_list() -> Arc<HashMap<PluginWasmId, Arc<WasmComponent>>> {
         Arc::new(PLUGIN_MANAGER.lock().unwrap().wasm_list.clone())
     }
 

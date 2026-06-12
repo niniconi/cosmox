@@ -18,8 +18,10 @@ use cosmox_api::{self, Event};
 use wasmtime_wasi_http::{WasiHttpCtx, WasiHttpView};
 
 use crate::plugin_manager::PluginManager;
-use crate::{About, Dependency, Plugin, PluginRaw, Version, VersionRequirement};
-use crate::{WasmComponent, WasmUiExtension};
+use crate::types::{
+    About, Dependency, Plugin, PluginId, PluginName, PluginRaw, PluginWasmId, PluginWasmName,
+    Version, VersionRequirement, WasmComponent, WasmUiExtension,
+};
 use cosmox_agent::ai::call_llm;
 
 pub mod bindings {
@@ -47,14 +49,17 @@ pub enum PluginLoadError {
     #[error("Dependency cycle detected involving plugin: {0}")]
     CircularDependency(String),
 
-    #[error("Missing required dependency: {name} (required by {requirement})")]
-    MissingDependency { name: String, requirement: String },
+    #[error("Missing required dependency: {requirement} (required by {name})")]
+    MissingDependency {
+        name: PluginName,
+        requirement: String,
+    },
 
     #[error(
         "Conflict detected: Plugin '{name}' conflicts with '{conflicting_with}'. Reason: {reason}"
     )]
     ConflictDependency {
-        name: String,
+        name: PluginName,
         conflicting_with: String,
         reason: String,
     },
@@ -122,9 +127,9 @@ impl WasiHttpView for ComponentRunStates {
 
 pub struct CosmoxPluginData {
     pub bind_events: Mutex<Vec<Arc<cosmox_api::Event>>>,
-    pub plugin_id: u64,
-    pub wasm_id: u64,
-    pub name: String,
+    pub plugin_id: PluginId,
+    pub wasm_id: PluginWasmId,
+    pub name: PluginWasmName,
 }
 
 impl bindings_context::Host for ComponentRunStates {}
@@ -247,7 +252,7 @@ impl bindings_cosmox_api::Host for CosmoxPluginData {
 }
 
 /// load wasm plugin from disk
-pub fn load_wasm<P>(plugin_id: u64, path: P, engine: &Engine) -> Result<Arc<WasmComponent>>
+pub fn load_wasm<P>(plugin_id: PluginId, path: P, engine: &Engine) -> Result<Arc<WasmComponent>>
 where
     P: AsRef<Path>,
 {
@@ -276,11 +281,12 @@ where
     // };
 
     let component = Component::from_file(engine, &path)?;
-    let name = path
-        .as_ref()
-        .file_name()
-        .map(|x| x.to_str().unwrap().to_string())
-        .unwrap_or("".to_string());
+    let name = PluginWasmName::new(
+        path.as_ref()
+            .file_name()
+            .map(|x| x.to_str().unwrap().to_string())
+            .unwrap_or("".to_string()),
+    );
 
     bindings::cosmox::plugin::cosmox_api::add_to_linker::<_, HasSelf<_>>(&mut linker, |s| {
         &mut s.plugin_data
@@ -301,52 +307,11 @@ where
     }))
 }
 
-pub fn parse_dependency<T: Into<String>>(dependency: T) -> Result<Dependency> {
-    let dependency = dependency.into();
-    let parts: Vec<&str> = dependency.split('@').collect();
-    if parts.len() == 1 || (parts.len() == 2 && matches!(parts[1].trim(), "*" | "any")) {
-        return Ok(Dependency {
-            id: None,
-            name: dependency,
-            requirement: VersionRequirement::Any,
-        });
-    } else if parts.len() != 2 {
-        anyhow::bail!("Invalid dependency format {dependency}. Use name@1.0.0");
-    }
-
-    let name = parts[0].trim().to_string();
-    let version_raw = parts[1].trim();
-    if version_raw.is_empty() {
-        anyhow::bail!("Invalid dependency format {dependency}. Use name@1.0.0");
-    }
-
-    let (operator_fn, v_num_str): (fn(Version) -> VersionRequirement, &str) =
-        if let Some(version) = version_raw.strip_prefix(">=") {
-            (VersionRequirement::GreaterEqual, version)
-        } else if let Some(version) = version_raw.strip_prefix("<=") {
-            (VersionRequirement::LessEqual, version)
-        } else if let Some(version) = version_raw.strip_prefix('^') {
-            (VersionRequirement::Caret, version)
-        } else if let Some(version) = version_raw.strip_prefix('~') {
-            (VersionRequirement::Tilde, version)
-        } else {
-            (VersionRequirement::Exact, version_raw)
-        };
-
-    let version = Version::from(v_num_str);
-
-    Ok(Dependency {
-        id: None,
-        name,
-        requirement: operator_fn(version),
-    })
-}
-
 pub fn finalize_dependency() -> Result<(), Vec<PluginLoadError>> {
     let plugin_manager = PluginManager::get_plugin_manager();
     let mut errors = vec![];
     for plugin_id in plugin_manager.plugin_names.values() {
-        let Some(plugin) = plugin_manager.plugins[*plugin_id as usize].clone() else {
+        let Some(plugin) = plugin_manager.plugins[usize::from(plugin_id)].clone() else {
             unreachable!();
         };
 
@@ -363,49 +328,44 @@ pub fn finalize_dependency() -> Result<(), Vec<PluginLoadError>> {
 
         if let Some(deps) = deps {
             for dep in deps {
-                let Some(plugin_id) = plugin_manager.plugin_names.get(dep.name.as_str()) else {
+                let Some(plugin_id) = plugin_manager.plugin_names.get(&dep.name) else {
                     log::error!("Plugin {name} is missing dependency {}.", dep.name);
                     errors.push(PluginLoadError::MissingDependency {
                         name: name.clone(),
-                        requirement: dep.name.clone(),
+                        requirement: dep.name.to_string(),
                     });
                     continue;
                 };
 
-                let Some(plugin) = plugin_manager.plugins[*plugin_id as usize].clone() else {
+                let Some(plugin) = plugin_manager.plugins[usize::from(plugin_id)].clone() else {
                     unreachable!();
                 };
 
                 let real_version = plugin.version();
 
-                let miss_dep = match &dep.requirement {
+                let miss_version = match &dep.requirement {
                     VersionRequirement::Exact(version) => (real_version != version).then(|| {
                         log::error!("Dependency Error: '{name}' requires '{target}' at exactly {version}, but found {real_version}", target = dep.name);
-                        format!("{}@{version}", dep.name)
                     }),
                     VersionRequirement::LessEqual(version) => (real_version > version).then(|| {
                         log::error!("Dependency Error: '{name}' requires '{target}' <= {version}, but found {real_version} (too high)", target = dep.name);
-                        format!("{}@<={version}", dep.name)
                     }),
                     VersionRequirement::GreaterEqual(version) => (real_version < version).then(|| {
                         log::error!("Dependency Error: '{name}' requires '{target}' >= {version}, but found {real_version} (too low)", target = dep.name);
-                        format!("{}@>={version}", dep.name)
                     }),
                     VersionRequirement::Caret(version) => (!real_version.matches_caret(version)).then(|| {
                         log::error!("Dependency Error: '{name}' requires '{target}' ^{version}, but found {real_version} (incompatible)", target = dep.name);
-                        format!("{}@^{version}", dep.name)
                     }),
                     VersionRequirement::Tilde(version) => (!real_version.matches_tilde(version)).then(|| {
                         log::error!("Dependency Error: '{name}' requires '{target}' ~{version}, but found {real_version} (patch range mismatch)", target = dep.name);
-                        format!("{}@~{version}", dep.name)
                     }),
                     VersionRequirement::Any => continue,
                 };
 
-                if let Some(miss_dep) = miss_dep {
+                if miss_version.is_some() {
                     errors.push(PluginLoadError::MissingDependency {
                         name: name.clone(),
-                        requirement: miss_dep,
+                        requirement: dep.to_string(),
                     })
                 }
             }
@@ -413,52 +373,45 @@ pub fn finalize_dependency() -> Result<(), Vec<PluginLoadError>> {
 
         if let Some(conflicts) = conflicts {
             for conflict in conflicts {
-                let Some(plugin_id) = plugin_manager.plugin_names.get(conflict.name.as_str())
+                let Some(conflict_plugin_id) = plugin_manager.plugin_names.get(&conflict.name)
                 else {
                     continue;
                 };
 
-                let Some(plugin) = plugin_manager.plugins[*plugin_id as usize].clone() else {
+                let Some(conflict_plugin) =
+                    plugin_manager.plugins[usize::from(conflict_plugin_id)].clone()
+                else {
                     unreachable!();
                 };
 
-                let real_version = plugin.version();
+                let conflict_version = conflict_plugin.version();
 
-                let conflict_dep = match &conflict.requirement {
-                    VersionRequirement::Exact(version) => (real_version == version).then(|| {
-                        log::error!("Conflict: '{name}' cannot coexist with '{target}' at version {version}, but {real_version} is installed", target = conflict.name);
-                        format!("{}@{version}", conflict.name)
+                let conflict_reasons = match &conflict.requirement {
+                    VersionRequirement::Exact(version) => (conflict_version == version).then(|| {
+                        format!("Conflict: '{name}' cannot coexist with '{target}' at version {version}, but {conflict_version} is installed", target = conflict.name)
                     }),
-                    VersionRequirement::LessEqual(version) => (real_version <= version).then(|| {
-                        log::error!("Conflict: '{name}' is incompatible with '{target}' <= {version} (found {real_version} in forbidden range)", target = conflict.name);
-                        format!("{}@<={version}", conflict.name)
+                    VersionRequirement::LessEqual(version) => (conflict_version <= version).then(|| {
+                        format!("Conflict: '{name}' is incompatible with '{target}' <= {version} (found {conflict_version} in forbidden range)", target = conflict.name)
                     }),
-                    VersionRequirement::GreaterEqual(version) => (real_version >= version).then(|| {
-                        log::error!("Conflict: '{name}' is incompatible with '{target}' >= {version} (found {real_version} in forbidden range)", target = conflict.name);
-                        format!("{}@>={version}", conflict.name)
+                    VersionRequirement::GreaterEqual(version) => (conflict_version >= version).then(|| {
+                        format!("Conflict: '{name}' is incompatible with '{target}' >= {version} (found {conflict_version} in forbidden range)", target = conflict.name)
                     }),
-                    VersionRequirement::Caret(version) => (real_version.matches_caret(version)).then(|| {
-                        log::error!("Conflict: '{name}' has a Caret conflict with '{target}' ^{version} (found incompatible {real_version})", target = conflict.name);
-                        format!("{}@^{version}", conflict.name)
+                    VersionRequirement::Caret(version) => (conflict_version.matches_caret(version)).then(|| {
+                        format!("Conflict: '{name}' has a Caret conflict with '{target}' ^{version} (found incompatible {conflict_version})", target = conflict.name)
                     }),
-                    VersionRequirement::Tilde(version) => (real_version.matches_tilde(version)).then(|| {
-                        log::error!("Conflict: '{name}' has a Tilde conflict with '{target}' ~{version} (found incompatible {real_version})", target = conflict.name);
-                        format!("{}@~{version}", conflict.name)
+                    VersionRequirement::Tilde(version) => (conflict_version.matches_tilde(version)).then(|| {
+                        format!("Conflict: '{name}' has a Tilde conflict with '{target}' ~{version} (found incompatible {conflict_version})", target = conflict.name)
                     }),
                     VersionRequirement::Any => {
-                        log::error!("Plugin {name} conflicts with plugin {}.", conflict.name);
-                        Some(format!("{}@any", conflict.name))
+                        Some(format!("Plugin {name} conflicts with plugin {}.", conflict.name))
                     }
                 };
 
-                if let Some(conflict_dep) = conflict_dep {
+                if let Some(conflict_reason) = conflict_reasons {
                     errors.push(PluginLoadError::ConflictDependency {
                         name: name.clone(),
-                        conflicting_with: format!(
-                            "{target}@{real_version}",
-                            target = conflict.name
-                        ),
-                        reason: conflict_dep,
+                        conflicting_with: conflict.to_string(),
+                        reason: conflict_reason,
                     })
                 }
             }
@@ -540,11 +493,11 @@ pub fn dependencies_analyzer(
 
 pub fn load_builtin_plugins() -> Vec<Plugin> {
     let plugin_id = PluginManager::get_plugin_autoincrement();
-    PluginManager::insert_plugin_name("test".to_string(), plugin_id);
+    PluginManager::insert_plugin_name(PluginName::new("test"), plugin_id);
     vec![Arc::new(PluginRaw::BuiltinPlugin {
         id: plugin_id,
         version: Version::from(env!("CARGO_PKG_VERSION")),
-        name: "test".to_string(),
+        name: PluginName::new("test"),
         description: "".to_string(),
     })]
 }
@@ -586,8 +539,9 @@ pub fn load<P: AsRef<Path> + Debug>(path: P) -> Result<Plugin, PluginLoadError> 
     let id = PluginManager::get_plugin_autoincrement();
     let path = path.as_ref();
     let mut about: Option<About> = None;
-    let mut wasm_extensions: HashMap<u64, Arc<WasmComponent>> = HashMap::with_capacity(16);
-    let mut _wasm_ui_extensions: HashMap<u64, Arc<WasmUiExtension>> = HashMap::with_capacity(16);
+    let mut wasm_extensions: HashMap<PluginWasmId, Arc<WasmComponent>> = HashMap::with_capacity(16);
+    let mut _wasm_ui_extensions: HashMap<PluginWasmId, Arc<WasmUiExtension>> =
+        HashMap::with_capacity(16);
 
     if let Ok(dir) = fs::read_dir(path) {
         for entry in dir {
@@ -657,7 +611,7 @@ pub fn load<P: AsRef<Path> + Debug>(path: P) -> Result<Plugin, PluginLoadError> 
         let parse_dep: fn(Option<Vec<String>>) -> Option<Vec<Dependency>> = |v| {
             v.map(|x| {
                 x.iter()
-                    .map(parse_dependency)
+                    .map(Dependency::parse)
                     .inspect(|x| {
                         if let Err(err) = x {
                             log::warn!("{err}")
@@ -670,7 +624,7 @@ pub fn load<P: AsRef<Path> + Debug>(path: P) -> Result<Plugin, PluginLoadError> 
 
         let dependencies = parse_dep(about.dependencies);
         let conflicts = parse_dep(about.conflicts);
-        let name = about.name;
+        let name = PluginName::new(about.name);
         let version = Version::from(about.version);
         let description = about.description.unwrap_or("".to_string());
         let author = "".to_string();
@@ -715,37 +669,37 @@ mod tests {
         config.async_support(true);
         let engine = Engine::new(&config).unwrap();
         let path = "test/plugin/cosmox-plugin-example/wasm/cosmox_plugin_example.wasm";
-        let _wasm_component = load_wasm(0, path, &engine).unwrap();
+        let _wasm_component = load_wasm(PluginId::new(0), path, &engine).unwrap();
     }
 
     #[test]
     fn test_parse_dependency() {
-        let dep = parse_dependency("my-plugin@>=1.2.3").unwrap();
-        assert_eq!(dep.name, "my-plugin");
+        let dep = Dependency::parse("my-plugin@>=1.2.3").unwrap();
+        assert_eq!(dep.name, PluginName::new("my-plugin"));
         assert_eq!(
             dep.requirement,
             VersionRequirement::GreaterEqual(Version::from("1.2.3"))
         );
 
-        let dep = parse_dependency("logic-gate@^1").unwrap();
+        let dep = Dependency::parse("logic-gate@^1").unwrap();
         assert_eq!(
             dep.requirement,
             VersionRequirement::Caret(Version::from("1"))
         );
 
-        let dep = parse_dependency("ui-kit@~2.5").unwrap();
+        let dep = Dependency::parse("ui-kit@~2.5").unwrap();
         assert_eq!(
             dep.requirement,
             VersionRequirement::Tilde(Version::from("2.5"))
         );
 
-        let dep = parse_dependency("base-lib@3.0.1").unwrap();
+        let dep = Dependency::parse("base-lib@3.0.1").unwrap();
         assert_eq!(
             dep.requirement,
             VersionRequirement::Exact(Version::from("3.0.1"))
         );
 
-        let dep = parse_dependency("legacy-tool@<=0.8.0").unwrap();
+        let dep = Dependency::parse("legacy-tool@<=0.8.0").unwrap();
         assert_eq!(
             dep.requirement,
             VersionRequirement::LessEqual(Version::from("0.8.0"))
@@ -755,7 +709,7 @@ mod tests {
     #[test]
     fn test_parse_dependency_errors() {
         // assert!(parse_dependency("invalid-format").is_err());
-        assert!(parse_dependency("plugin@").is_err());
+        assert!(Dependency::parse("plugin@").is_err());
     }
 
     /// Helper to convert a "Normal Dep" list (A depends on [B])
