@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use actix_web::{HttpResponse, Responder, get, web};
+use actix_web::{Responder, get, web};
 use cosmox_backend_api::{
     Context,
     api::{
@@ -22,7 +22,7 @@ actix_web_error! {
 
 #[get("/{rid}")]
 pub async fn get(ctx: web::ReqData<Context<'_>>, rid: web::Path<u64>) -> impl Responder {
-    HttpResponse::NotImplemented().body("Not implemented add api")
+    into_message!(api::metadata::get(&mut ctx.into_inner(), rid.into_inner()).await)
 }
 
 /// Query metadata from server

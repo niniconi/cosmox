@@ -10,9 +10,16 @@ use crate::{
 
 pub use cosmox_backend_data::services::metadata_service::{MetadataError, MetadataQueryRequest};
 
-pub async fn get(ctx: &mut Context<'_>, rid: u64) -> Result<(), MetadataError> {
+pub async fn get(
+    ctx: &mut Context<'_>,
+    rid: u64,
+) -> Result<Message<Arc<Mutex<Metadata<()>>>>, ApiError<MetadataError>> {
     ctx.access_ctx.endpoint = api::Endpoint::GetMetadata { rid };
-    unimplemented!("Not implemented add api")
+    let payload = Arc::new(MetadataQueryRequest {
+        root_node: rid,
+        depth: 1,
+    });
+    Message::from_service(ctx, metadata_service::query_metadata(payload)).await
 }
 
 /// Query metadata from server
