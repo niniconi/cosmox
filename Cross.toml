@@ -1,0 +1,10 @@
+[target.x86_64-unknown-linux-gnu]
+image = "ubuntu:latest"
+pre-build = [
+    "apt-get update",
+    "apt-get install -y build-essential curl pkg-config",
+    "apt-get install -y libavcodec-dev libavformat-dev libavutil-dev",
+    "apt-get install -y libswscale-dev libswresample-dev libavfilter-dev",
+    "apt-get install -y libavdevice-dev libpostproc-dev ffmpeg",
+    "apt-get install -y liblua5.5-dev"
+]

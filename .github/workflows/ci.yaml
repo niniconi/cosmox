@@ -1,0 +1,198 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - dev
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  fmt:
+    name: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: check formatting
+        run: cargo fmt -- --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Run clippy action
+        uses: clechasseur/rs-clippy-check@v5
+        with:
+          args: --all-targets --all-features --workspace -- -D warnings
+
+  test:
+    runs-on: ${{ matrix.os }}
+    name: test ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Dependencies on Ubuntu
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev libavdevice-dev libpostproc-dev ffmpeg liblua5.4-dev pkg-config
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: cargo generate-lockfile
+        if: hashFiles('Cargo.lock') == ''
+        run: cargo generate-lockfile
+      - name: cargo test --locked
+        run: cargo test --locked --all-features --all-targets --workspace
+
+  doc:
+    name: doc
+    needs: [fmt, clippy]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Run cargo doc
+        run: cargo doc --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: --cfg docsrs
+
+  cross-build:
+    needs: [fmt, clippy, test]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - x86_64-unknown-linux-musl
+    env:
+      PKG_CONFIG_ALLOW_CROSS: "1"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cross target directory
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install Cross-rs
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build Target
+        run: cross build --target ${{ matrix.target }} --release
+
+      - name: Package Binary
+        shell: bash
+        run: |
+          mkdir -p staging
+          BINARY_NAME=$(cargo read-manifest | jq -r '.targets[] | select(.kind[] == "bin") | .name' | head -n 1)
+
+          if [ -f "target/release/${BINARY_NAME}" ]; then
+            cp "target/release/${BINARY_NAME}" "staging/${BINARY_NAME}-${{ matrix.target }}"
+          elif [ -f "target/release/${BINARY_NAME}.exe" ]; then
+            cp "target/release/${BINARY_NAME}" "staging/${BINARY_NAME}-${{ matrix.target }}.exe"
+          elif [ -f "target/${{ matrix.target }}/release/${BINARY_NAME}" ]; then
+            cp "target/${{ matrix.target }}/release/${BINARY_NAME}" "staging/${BINARY_NAME}-${{ matrix.target }}"
+          elif [ -f "target/${{ matrix.target }}/release/${BINARY_NAME}.exe" ]; then
+            cp "target/${{ matrix.target }}/release/${BINARY_NAME}.exe" "staging/${BINARY_NAME}-${{ matrix.target }}.exe"
+          fi
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: cosmox-${{ matrix.target }}
+          path: staging
+
+  release-assets:
+    needs: cross-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: cosmox-*
+          path: all-artifacts
+      - name: Flatten and Prepare Release Assets
+        run: |
+          mkdir -p release-assets
+          find all-artifacts/ -type f -exec cp {} release-assets/ \;
+
+      - name: Evaluate Version Tag Semantic Classification
+        id: determine_type
+        shell: bash
+        run: |
+          CURRENT_TAG="${{ github.ref_name }}"
+          echo "ANALYZING: Evaluating semantic string matrix for tag: ${CURRENT_TAG}"
+
+          if [[ "$CURRENT_TAG" =~ - ]]; then
+            echo "CLASSIFICATION: Pre-release configuration detected."
+            echo "IS_PRE_RELEASE=true" >> $GITHUB_OUTPUT
+          else
+            echo "CLASSIFICATION: Official production release detected."
+            echo "IS_PRE_RELEASE=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v3
+        with:
+          name: Release ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          files: release-assets/*
+          draft: true
+          prerelease: ${{ steps.determine_type.outputs.IS_PRE_RELEASE }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-and-push-image:
+    needs: [fmt, clippy, test]
+    if: startsWith(github.ref, 'refs/tags/')
+    uses: ./.github/workflows/build-and-push-image.yaml
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit
+    with:
+      image_tag: ${{ github.ref_name }}
