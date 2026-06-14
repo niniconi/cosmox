@@ -44,7 +44,11 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Pack { input, output, release } => {
+        Command::Pack {
+            input,
+            output,
+            release,
+        } => {
             let target = if release {
                 PackFromProfile::Release
             } else {

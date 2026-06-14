@@ -36,6 +36,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_ollama() {
-        ollama("http://localhost:11434/api/generate", "gemma3:270m", "").await.unwrap();
+        ollama("http://localhost:11434/api/generate", "gemma3:270m", "")
+            .await
+            .unwrap();
     }
 }

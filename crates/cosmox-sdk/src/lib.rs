@@ -19,7 +19,6 @@ pub use transport::ipc::IpcApi;
 #[cfg(feature = "web")]
 pub use transport::web::HttpApi;
 
-
 #[cfg(feature = "ffi")]
 pub mod ffi;
 

@@ -1,4 +1,7 @@
-use actix_web::{HttpResponse, Responder, get, post, web::{self, Payload}};
+use actix_web::{
+    HttpResponse, Responder, get, post,
+    web::{self, Payload},
+};
 use cosmox_backend_api::{
     Context,
     api::{
@@ -34,13 +37,11 @@ actix_web_error! {
 pub async fn install_plugin(
     ctx: web::ReqData<Context<'_>>,
     params: web::Query<InstallPluginParams>,
-    payload: Payload
+    payload: Payload,
 ) -> impl Responder {
-    into_message!(api::plugin::install_plugin(
-        &mut ctx.into_inner(),
-        params.into_inner(),
-        payload
-    ).await)
+    into_message!(
+        api::plugin::install_plugin(&mut ctx.into_inner(), params.into_inner(), payload).await
+    )
 }
 
 #[post("/uninstall")]

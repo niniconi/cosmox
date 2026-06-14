@@ -584,10 +584,7 @@ impl Api for HttpApi {
                     self.post_query("/plugin/install", &format!("url={url}"))
                         .await
                 }
-                InstallPlugin::Data(data) => {
-                    self.post_binary("/plugin/install", data)
-                        .await
-                }
+                InstallPlugin::Data(data) => self.post_binary("/plugin/install", data).await,
             }
         })
     }

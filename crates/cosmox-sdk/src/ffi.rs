@@ -5,12 +5,12 @@ use crate::{
     types::{UserLogin, UserLoginIdent},
 };
 
-#[cfg(feature = "web")]
-use crate::transport::web::HttpApi;
-#[cfg(feature = "ipc")]
-use crate::transport::ipc::IpcApi;
 #[cfg(feature = "direct")]
 use crate::transport::direct::DirectApi;
+#[cfg(feature = "ipc")]
+use crate::transport::ipc::IpcApi;
+#[cfg(feature = "web")]
+use crate::transport::web::HttpApi;
 
 // Global tokio runtime for FFI blocking
 
@@ -48,9 +48,8 @@ pub extern "C" fn cosmox_client_new(
             as *mut std::ffi::c_void,
         "ipc" => Box::into_raw(Box::new(create_client::<IpcApi>(hostname, port)))
             as *mut std::ffi::c_void,
-        "direct" => Box::into_raw(Box::new(create_client::<DirectApi>(
-            hostname, port,
-        ))) as *mut std::ffi::c_void,
+        "direct" => Box::into_raw(Box::new(create_client::<DirectApi>(hostname, port)))
+            as *mut std::ffi::c_void,
         _ => return std::ptr::null_mut(),
     }
 }

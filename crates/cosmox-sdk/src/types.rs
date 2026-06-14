@@ -291,7 +291,7 @@ pub struct InitStatus {
 #[derive(Debug, Serialize)]
 pub enum InstallPlugin {
     Url(Url),
-    Data(Vec<u8>)
+    Data(Vec<u8>),
 }
 
 // -- Scanner --
