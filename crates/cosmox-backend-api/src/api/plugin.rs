@@ -10,7 +10,7 @@ use crate::{
     Context, api,
     message::{ApiError, FromService, Message},
 };
-pub use cosmox_plugin_manager::plugin_manager::PluginError;
+pub use cosmox_plugin_manager::{plugin_manager::PluginError, types::PluginName};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InstallPluginParams {
@@ -43,14 +43,20 @@ pub async fn uninstall_plugin(ctx: &mut Context<'_>) -> Result<(), PluginError> 
     unimplemented!("Uninstall plugin api is not yet implemented.")
 }
 
-pub async fn enable_plugin(ctx: &mut Context<'_>) -> Result<(), PluginError> {
+pub async fn enable_plugin(
+    ctx: &mut Context<'_>,
+    plugin: PluginName,
+) -> Result<Message<()>, ApiError<PluginError>> {
     ctx.access_ctx.endpoint = api::Endpoint::EnablePlugin;
-    unimplemented!("Enable plugin api is not yet implemented.")
+    Message::from_service(ctx, PluginManager::enable(plugin)).await
 }
 
-pub async fn disable_plugin(ctx: &mut Context<'_>) -> Result<(), PluginError> {
+pub async fn disable_plugin(
+    ctx: &mut Context<'_>,
+    plugin: PluginName,
+) -> Result<Message<()>, ApiError<PluginError>> {
     ctx.access_ctx.endpoint = api::Endpoint::DisablePlugin;
-    unimplemented!("Disable plugin api is not yet implemented.")
+    Message::from_service(ctx, PluginManager::disable(plugin)).await
 }
 
 pub async fn info(ctx: &mut Context<'_>) -> Result<Message<String>, ApiError<PluginError>> {

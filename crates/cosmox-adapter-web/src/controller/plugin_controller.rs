@@ -6,7 +6,7 @@ use cosmox_backend_api::{
     Context,
     api::{
         self,
-        plugin::{InstallPluginParams, PluginError},
+        plugin::{InstallPluginParams, PluginError, PluginName},
     },
     message,
 };
@@ -49,14 +49,26 @@ pub async fn uninstall_plugin(ctx: web::ReqData<Context<'_>>) -> impl Responder 
     HttpResponse::NotImplemented().body("Uninstall plugin api is not yet implemented.")
 }
 
-#[post("/{id}/enable")]
-pub async fn enable_plugin(ctx: web::ReqData<Context<'_>>, id: web::Path<u64>) -> impl Responder {
-    HttpResponse::NotImplemented().body("Enable plugin api is not yet implemented.")
+#[post("/{plugin}/enable")]
+pub async fn enable_plugin(
+    ctx: web::ReqData<Context<'_>>,
+    plugin: web::Path<String>,
+) -> impl Responder {
+    into_message!(
+        api::plugin::enable_plugin(&mut ctx.into_inner(), PluginName::new(plugin.into_inner()))
+            .await
+    )
 }
 
-#[post("/{id}/disable")]
-pub async fn disable_plugin(ctx: web::ReqData<Context<'_>>, id: web::Path<u64>) -> impl Responder {
-    HttpResponse::NotImplemented().body("Disable plugin api is not yet implemented.")
+#[post("/{plugin}/disable")]
+pub async fn disable_plugin(
+    ctx: web::ReqData<Context<'_>>,
+    plugin: web::Path<String>,
+) -> impl Responder {
+    into_message!(
+        api::plugin::disable_plugin(&mut ctx.into_inner(), PluginName::new(plugin.into_inner()))
+            .await
+    )
 }
 
 #[get("/info")]
