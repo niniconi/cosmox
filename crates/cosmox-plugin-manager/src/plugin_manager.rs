@@ -1,7 +1,8 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
+    fs,
     path::{Path, PathBuf},
-    sync::{Arc, LazyLock, Mutex, MutexGuard},
+    sync::{Arc, LazyLock, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
 use anyhow::{Result, anyhow};
@@ -10,7 +11,11 @@ use common::default_constants::ascii_letters_number_separators;
 use cosmox_configuration::Configuration;
 use futures_util::StreamExt;
 use lru::LruCache;
-use tokio::{fs::File, io::AsyncWriteExt};
+use serde::{Deserialize, Serialize};
+use tokio::{
+    fs::File,
+    io::{AsyncReadExt, AsyncWriteExt},
+};
 use url::Url;
 use wasmtime::component::ResourceTable;
 use wasmtime::{Engine, Store};
@@ -22,10 +27,9 @@ pub use super::plugin_loader::bindings::cosmox::plugin::cosmox_types as bindings
 use crate::{
     plugin_lifecycle::plugin_wasm_lifecycle,
     plugin_loader::{
-        self, ComponentRunStates, CosmoxPluginData, PluginLoadError, bindings, finalize_dependency,
-        load_builtin_plugins, load_external_plugins,
+        ComponentRunStates, CosmoxPluginData, PluginLoadError, PluginLoader, bindings,
     },
-    types::{Plugin, PluginId, PluginName, PluginWasmId, WasmComponent},
+    types::{PluginName, PluginWasmId, PluginWasmName, WasmComponent},
 };
 
 use wasmtime_wasi::WasiCtxBuilder;
@@ -33,7 +37,7 @@ use wasmtime_wasi::WasiCtxBuilder;
 /// Errors related to plugin management and execution.
 #[derive(Debug, thiserror::Error)]
 pub enum PluginError {
-    #[error("Plugin '{0}' not found in the registry or disk.")]
+    #[error("Plugin '{0}' not found in the plugin manager.")]
     NotFound(String),
 
     #[error("Not authorized to manage plugins.")]
@@ -81,30 +85,31 @@ pub enum PluginError {
     InternalError(String),
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct PluginManagerState {
+    enabled_plugins: Vec<PluginState>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginState {
+    pub name: PluginName,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PluginWasmState {
+    pub name: PluginWasmName,
+}
+
+#[derive(Debug, Clone)]
 pub struct PluginManager {
     /// wasm runtime engine
-    pub engine: Arc<Engine>,
-
-    pub plugin_enable_count: usize,
-    pub plugin_count: usize,
-
-    pub plugin_names: HashMap<PluginName, PluginId>,
-    pub plugins: Vec<Option<Plugin>>,
-
-    pub wasm_list: HashMap<PluginWasmId, Arc<WasmComponent>>,
-
-    /// ```rust
-    /// let event: Event;
-    /// evet.into_key();
-    /// ```
-    pub event_map_to_wasm_components: HashMap<cosmox_api::EventKey, Vec<Arc<WasmComponent>>>,
-
-    // pub id_map_to_name: HashMap<u64, String>,
-    plugin_autoincrement: PluginId,
-    wasm_autoincrement: PluginWasmId,
+    pub engine: Engine,
 
     pub supported_media_types: HashSet<String>,
+
+    pub plugin_loader: PluginLoader,
+
+    pub stat: PluginManagerState,
 }
 
 static SHARE: LazyLock<Mutex<LruCache<PluginWasmId, Store<ComponentRunStates>>>> =
@@ -119,93 +124,116 @@ static SHARE: LazyLock<Mutex<LruCache<PluginWasmId, Store<ComponentRunStates>>>>
         Mutex::new(LruCache::new(std::num::NonZeroUsize::new(10).unwrap()))
     });
 
-static PLUGIN_MANAGER: LazyLock<Mutex<PluginManager>> = LazyLock::new(|| {
+static PLUGIN_MANAGER: LazyLock<RwLock<PluginManager>> = LazyLock::new(|| {
     let mut config = wasmtime::Config::new();
     config.wasm_component_model(true);
     config.async_support(true);
 
-    let engine = Arc::new(Engine::new(&config).unwrap());
-    let plugins = vec![None; u16::MAX as usize];
+    let engine = Engine::new(&config).unwrap();
+    let plugin_loader = PluginLoader::new(engine.clone());
 
-    Mutex::new(PluginManager {
+    RwLock::new(PluginManager {
         engine,
-        plugins,
-        plugin_autoincrement: PluginId::new(0),
-        wasm_autoincrement: PluginWasmId::new(0),
-        ..Default::default()
+        plugin_loader,
+        supported_media_types: HashSet::<String>::new(),
+        stat: PluginManagerState::default(),
     })
 });
 
-/// Plugin manager
+/// Plugin Manager
+///
+/// Plugin Manager lifecycle:
+///
+/// ```text
+///   uninit
+///     │
+///     ▼
+///   load_plugin_manager_stat ──────► read persisted state
+///     │
+///     ▼
+///   _init { load_enabled_plugins }
+///                     │
+///                     ├──► discover plugins (filesystem + builtin)
+///                     ├──► filter by enabled_plugins
+///                     ├──► alloc plugin IDs
+///                     ├──► finalize_dependency_all
+///                     │       ├──► resolve deps / conflicts
+///                     │       └──► build reverse_dep map
+///                     ├──► dependencies_analyzer
+///                     │       └──► topological sort (Kahn) ──► parallel batches
+///                     └──► for each batch:
+///                             ├──► load_wasm (+ jit compile) ──► external
+///                             ├──► run ──────► builtin
+///                             └──► register_plugin (bind events)
+///     │
+///     ▼
+///   lifecycle_manager
+///          │
+///          └──► for each wasm_component:
+///                  ├──► init_wasm_store (or pull from SHARE cache)
+///                  ├──► instantiate_async
+///                  └──► dispatch events ◄──── loop
+/// ```
+///
+/// Plugin state lifecycle:
+///
+/// ```text
+///   install ──────► enable ──────► load ──────► event dispatch ──────► disable ──────► unload ──────► uninstall
+/// ```
+// # Lock discipline
+//
+// The global [`PLUGIN_MANAGER`] is protected by an `RwLock` to allow
+// concurrent readers. All access MUST follow these rules:
+//
+// 1. **Release before Wasm/plugin execution**: Any lock (read or write)
+//    MUST be released before entering Wasm execution context (e.g.,
+//    `call_on_event`, `instantiate_async`). Holding a lock across a
+//    Wasm call can cause deadlock when the plugin calls back into the host
+//    (e.g., `unregister_event_listener` through [`Self::unbind_event_from_wasm`]).
+//
+// 2. **Async functions should not use `&self`/`&mut self`**: Holding a
+//    borrow across `.await` causes cross-await borrow issues (lifetime
+//    violations). Use associated functions (no `&self`) and explicitly
+//    acquire/release locks within the function body.
+//
+// 3. **Keep lock scopes narrow**: Always use a block `{ ... }` to bound
+//    the lock scope. Never hold a lock longer than needed.
 impl PluginManager {
+    /// Acquire a read lock on `PLUGIN_MANAGER`.
+    ///
+    /// The guard MUST be dropped before entering any Wasm or plugin
+    /// execution context (see lock discipline above).
     #[inline]
-    pub fn get_plugin_manager() -> Arc<PluginManager> {
-        Arc::new(PLUGIN_MANAGER.lock().unwrap().clone())
+    pub fn get_plugin_manager() -> RwLockReadGuard<'static, PluginManager> {
+        PLUGIN_MANAGER.read().unwrap()
     }
 
+    /// Acquire a write lock on `PLUGIN_MANAGER`.
+    ///
+    /// The guard MUST be dropped before entering any Wasm or plugin
+    /// execution context or before any `.await` point.
     #[inline]
-    pub fn get_plugin_manager_mut<'a>() -> MutexGuard<'a, PluginManager> {
-        PLUGIN_MANAGER.lock().unwrap()
+    pub fn get_plugin_manager_mut() -> RwLockWriteGuard<'static, PluginManager> {
+        PLUGIN_MANAGER.write().unwrap()
     }
 
-    /// Generate a plugin_id from plugin manager
-    /// ```rust
-    /// let plugin_id0 = PluginManager::get_plugin_autoincrement();
-    /// let plugin_id1 = PluginManager::get_plugin_autoincrement();
-    /// assert_ne!(plugin_id0, plugin_id1);
-    /// ```
-    #[inline]
-    pub fn get_plugin_autoincrement() -> PluginId {
-        PLUGIN_MANAGER.lock().unwrap()._get_plugin_autoincrement()
-    }
-
-    fn _get_plugin_autoincrement(&mut self) -> PluginId {
-        self.plugin_autoincrement += PluginId::new(1);
-        self.plugin_autoincrement
-    }
-
-    #[inline]
-    pub fn insert_plugin_name(name: PluginName, id: PluginId) {
-        PLUGIN_MANAGER.lock().unwrap()._insert_plugin_name(name, id)
-    }
-
-    pub fn _insert_plugin_name(&mut self, name: PluginName, id: PluginId) {
-        self.plugin_names.insert(name, id);
-    }
-
-    /// Generate a wasm_id from plugin manager
-    /// ```rust
-    /// let wasm_id0 = PluginManager::get_wasm_autoincrement();
-    /// let wasm_id1 = PluginManager::get_wasm_autoincrement();
-    /// assert_ne!(wasm_id0, wasm_id1);
-    /// ```
-    #[inline]
-    pub fn get_wasm_autoincrement() -> PluginWasmId {
-        PLUGIN_MANAGER.lock().unwrap()._get_wasm_autoincrement()
-    }
-
-    fn _get_wasm_autoincrement(&mut self) -> PluginWasmId {
-        self.wasm_autoincrement += PluginWasmId::new(1);
-        self.wasm_autoincrement
-    }
-
+    /// Initialize the plugin manager.
+    ///
+    /// Loads persisted plugin state, initializes all enabled plugins
+    /// (dependency resolution + wasm compilation), then starts the
+    /// runtime event loop for each wasm component.
     pub async fn init() {
         {
-            let plugin_path = &Configuration::get_global_configuration().cosmox.plugin.path;
+            let plugin_manager_stat = PluginManager::load_plugin_manager_stat().await.unwrap();
 
-            let builtin_plugins = load_builtin_plugins();
-            let external_plugins = load_external_plugins(plugin_path);
+            let mut plugin_manager = PluginManager::get_plugin_manager_mut();
 
-            let mut plugin_manager = PLUGIN_MANAGER.lock().unwrap();
+            plugin_manager.stat = plugin_manager_stat;
 
-            plugin_manager._init(builtin_plugins, external_plugins);
+            plugin_manager._init();
 
             log::info!("initialized plugin manager");
         } // Leaving the life cycle of `plugin_manager`
-
-        if let Err(errors) = finalize_dependency() {
-            log::warn!("finalize dependency errors, count = {}", errors.len())
-        }
 
         // The lock of `plugin_manager` has been released
         // PluginManager::lifecycle_manager();
@@ -217,29 +245,40 @@ impl PluginManager {
         PluginManager::lifecycle_manager().await
     }
 
-    fn _init(&mut self, builtin_plugins: Vec<Plugin>, external_plugins: Vec<Plugin>) {
-        self.plugin_count += builtin_plugins.len() + external_plugins.len();
-        if self.plugin_count > u16::MAX as usize {
-            panic!(
-                "Plugin count overflow: current count is {}, but the limit is {}",
-                self.plugin_count,
-                u16::MAX
-            );
-        }
-        for plugin in builtin_plugins {
-            let id = usize::from(plugin.id());
-            self.plugins[id] = Some(plugin);
-        }
+    /// Internal initialization: load all enabled plugins.
+    fn _init(&mut self) {
+        let enabled_plugins: HashSet<PluginName> =
+            HashSet::from_iter(self.stat.enabled_plugins.iter().map(|x| x.name.clone()));
 
-        for plugin in external_plugins {
-            let id = usize::from(plugin.id());
-            self.plugins[id] = Some(plugin);
-        }
+        let plugin_path = &Configuration::get_global_configuration().cosmox.plugin.path;
+
+        let external_lz_plugins = self.plugin_loader.pre_load_external_plugins(plugin_path);
+        let builtin_lz_plugins = self.plugin_loader.pre_load_builtin_plugins();
+
+        self.plugin_loader
+            .lazy_load_plugins_list
+            .extend(external_lz_plugins);
+        self.plugin_loader
+            .lazy_load_plugins_list
+            .extend(builtin_lz_plugins);
+
+        let _plugins = self.plugin_loader.load_enabled_plugins(enabled_plugins);
     }
 
+    /// Initialize a wasmtime Store for a given wasm component.
+    ///
+    /// Sets up WASI context, HTTP context, resource table, and plugin
+    /// data (binding events, IDs).
+    ///
+    /// # Arguments
+    /// * `engine` - Wasmtime engine.
+    /// * `wasm_component` - The compiled wasm component to create a store for.
+    ///
+    /// # Returns
+    /// * `Store<ComponentRunStates>` - Initialized store with full runtime context.
     fn init_wasm_store_fn(
-        engine: Arc<Engine>,
-        wasm_component: Arc<WasmComponent>,
+        engine: Engine,
+        wasm_component: WasmComponent,
     ) -> Store<ComponentRunStates> {
         // log::trace!("[Thread '{}' (ID: {:?})] Lazily initializing Store for ServiceKey {}. Cache size: {}",
         // current_thread_name, current_thread_id, task_service_key, cache_size);
@@ -259,30 +298,58 @@ impl PluginManager {
         Store::new(&engine, state)
     }
 
+    /// Runs the runtime event loop for each wasm component.
+    ///
+    /// # Lock discipline
+    /// The PM read lock is acquired only to read engine and wasm component list,
+    /// then released before any Wasm instantiation or execution.
+    ///
+    /// ```text
+    ///   get wasm_list from plugin_loader
+    ///         │
+    ///         │ for each wasm_component
+    ///         ▼
+    ///   SHARE cache ──► pop by wasm_id
+    ///         │
+    ///         ├── hit ────► use cached Store
+    ///         └── miss ───► init_wasm_store_fn
+    ///                              │
+    ///                              └──► create Store (WasiCtx + ResourceTable)
+    ///         │
+    ///         ▼
+    ///   instantiate_async ──────► create PluginHostWorld instance
+    ///         │
+    ///         ▼
+    ///   plugin_wasm_lifecycle ──────► dispatch events to wasm
+    ///         │
+    ///         ▼
+    ///   SHARE cache ──► put store back ◄──── loop
+    /// ```
     async fn lifecycle_manager() {
         let (engine, wasm_list) = {
-            let plugin_manager = PLUGIN_MANAGER.lock().unwrap();
-            let wasm_list = plugin_manager.wasm_list.clone();
+            let plugin_manager = PluginManager::get_plugin_manager();
+            let wasm_list = plugin_manager.plugin_loader.get_wasm_compoents();
             let engine = plugin_manager.engine.clone();
             (engine, wasm_list)
         };
 
         log::debug!("engine config = {:#?}", engine.config());
 
-        for (wasm_id, wasm_component) in wasm_list.iter() {
+        for wasm_component in wasm_list.iter() {
+            let wasm_id = wasm_component.id;
             log::debug!(
                 "start lifetime manager for wasm ID:{wasm_id}, wasm_component:{wasm_component:#?}"
             );
 
             let mut store = {
                 let mut cache = SHARE.lock().unwrap();
-                cache.pop(wasm_id).unwrap_or_else(|| {
+                cache.pop(&wasm_id).unwrap_or_else(|| {
                     log::trace!("[Thread '{}' (ID: {:?})] Lazily initializing Store for ServiceKey {}. Cache size: {}",
                         std::thread::current().name().unwrap_or("unnamed"),
                         std::thread::current().id(),
                         wasm_id,
                         cache.len());
-                    PluginManager::init_wasm_store_fn(engine.clone(),wasm_component.clone())
+                    PluginManager::init_wasm_store_fn(engine.clone(), wasm_component.clone())
                 })
             };
 
@@ -298,7 +365,7 @@ impl PluginManager {
 
             {
                 let mut cache = SHARE.lock().unwrap();
-                cache.put(*wasm_id, store);
+                cache.put(wasm_id, store);
             }
         }
     }
@@ -390,37 +457,190 @@ impl PluginManager {
 
         log::info!("Plugin tarball successfully saved at {:?}", tmp_path);
 
-        let plugin_path = PluginManager::extract_plugin(&tmp_path).await?;
+        let _plugin_path = PluginManager::extract_plugin(&tmp_path).await?;
 
         log::info!("Unpack plugin archive successfully.");
 
-        let plugin = plugin_loader::load(plugin_path)?;
-        let id = usize::from(plugin.id());
-        PluginManager::get_plugin_manager_mut().plugins[id] = Some(plugin);
+        let _plugin_manager = PluginManager::get_plugin_manager_mut();
+
+        // plugin_manager.plugin_loader.load_plugin(lz_plugin)
+        // let plugin = plugin_loader::load(plugin_path)?;
+        // let id = usize::from(plugin.id());
+        // PluginManager::get_plugin_manager_mut().plugins[id] = Some(plugin);
 
         Ok(())
     }
 
+    /// Uninstall a plugin (placeholder).
     pub fn uninstall() {}
 
+    /// Check plugin health (placeholder).
     pub fn check() {}
 
+    /// Enable a plugin by name.
+    ///
+    /// Loads the plugin and appends it to the enabled plugin state.
+    /// No-op if the plugin is already enabled.
+    ///
+    /// # Arguments
+    /// * `plugin` - Name of the plugin to enable.
+    ///
+    /// # Returns
+    /// * `Ok(())` - Plugin enabled successfully.
+    /// * `Err(PluginError)` - Load failure or state persistence error.
     #[inline]
-    pub fn enable() {
-        PLUGIN_MANAGER.lock().unwrap().plugin_enable_count += 1;
+    pub async fn enable(plugin: PluginName) -> Result<(), PluginError> {
+        let loaded_plugin;
+        {
+            let mut plugin_manager = PluginManager::get_plugin_manager_mut();
+
+            if plugin_manager
+                .stat
+                .enabled_plugins
+                .iter()
+                .any(|x| x.name == plugin)
+            {
+                log::warn!("Plugin {plugin} has been enabled.");
+                return Ok(());
+            }
+
+            loaded_plugin = plugin_manager
+                .plugin_loader
+                .load_enabled_plugin(plugin.clone())?;
+
+            plugin_manager
+                .stat
+                .enabled_plugins
+                .push(PluginState { name: plugin });
+        }
+
+        loaded_plugin.enable();
+        Self::store_plugin_manager_stat().await?;
+
+        Ok(())
     }
 
+    /// Disable and unload a plugin by name.
+    ///
+    /// Frees all wasm IDs, unbinds events, releases slot IDs, and
+    /// removes the plugin from the enabled state.
+    ///
+    /// # Arguments
+    /// * `plugin` - Name of the plugin to disable.
+    ///
+    /// # Returns
+    /// * `Ok(())` - Plugin disabled successfully.
+    /// * `Err(PluginError)` - Plugin not found.
     #[inline]
-    pub fn disable() {
-        PLUGIN_MANAGER.lock().unwrap().plugin_enable_count -= 1;
+    pub async fn disable(plugin: PluginName) -> Result<(), PluginError> {
+        {
+            let mut plugin_manager = PluginManager::get_plugin_manager_mut();
+
+            if plugin_manager
+                .plugin_loader
+                .unload_plugin(&plugin)
+                .is_none()
+            {
+                log::error!("Failed disable plugin {plugin}: Not found");
+                return Err(PluginError::NotFound(plugin.to_string()));
+            }
+
+            plugin_manager
+                .stat
+                .enabled_plugins
+                .retain(|x| x.name != plugin);
+
+            log::info!("Disabled plugin {plugin}");
+        }
+
+        Self::store_plugin_manager_stat().await?;
+
+        Ok(())
     }
 
+    /// Load persisted plugin manager state from disk.
+    ///
+    /// Reads `plugin_state.json` from the configured state path and
+    /// deserializes it into `PluginManagerState`.
+    /// Return the `PluginManagerState::default()` value if the `plugin_state.json` file is missing
+    ///
+    /// # Returns
+    /// * `Ok(PluginManagerState)` - The loaded state.
+    /// * `Err(PluginError)` - I/O or deserialization failure.
+    pub async fn load_plugin_manager_stat() -> Result<PluginManagerState, PluginError> {
+        let state_path =
+            PathBuf::from(&Configuration::get_global_configuration().cosmox.state.path)
+                .join("plugin_state.json");
+
+        if fs::exists(&state_path).is_ok_and(|x| !x) {
+            return Ok(PluginManagerState::default());
+        }
+
+        let mut file = File::open(state_path)
+            .await
+            .inspect_err(|err| log::error!("{err}"))
+            .map_err(|err| PluginError::FileSystemError(err.to_string()))?;
+        let mut buf = Vec::with_capacity(512);
+
+        let _ = file
+            .read_to_end(&mut buf)
+            .await
+            .inspect_err(|err| log::error!("{err}"))
+            .map_err(|err| PluginError::FileSystemError(err.to_string()))?;
+
+        serde_json::from_slice(buf.as_slice())
+            .inspect_err(|err| log::error!("{err}"))
+            .map_err(|err| PluginError::InternalError(err.to_string()))
+    }
+
+    /// Persist plugin manager state to disk.
+    ///
+    /// Serializes the current `PluginManagerState` to `plugin_state.json`
+    /// in the configured state directory.
+    ///
+    /// # Returns
+    /// * `Ok(())` - State saved successfully.
+    /// * `Err(PluginError)` - I/O or serialization failure.
+    pub async fn store_plugin_manager_stat() -> Result<(), PluginError> {
+        let stat = PluginManager::get_plugin_manager().stat.clone();
+        let state_path =
+            PathBuf::from(&Configuration::get_global_configuration().cosmox.state.path);
+
+        fs::create_dir_all(&state_path)
+            .inspect_err(|err| log::error!("{err}"))
+            .map_err(|err| PluginError::FileSystemError(err.to_string()))?;
+
+        let mut file = File::create(state_path.join("plugin_state.json"))
+            .await
+            .inspect_err(|err| log::error!("{err}"))
+            .map_err(|err| PluginError::FileSystemError(err.to_string()))?;
+
+        file.write(serde_json::to_vec(&stat).unwrap().as_slice())
+            .await
+            .inspect_err(|err| log::error!("{err}"))
+            .map_err(|err| PluginError::InternalError(err.to_string()))?;
+        Ok(())
+    }
+
+    /// Query available UI extensions (placeholder).
     pub fn query_ui_extensions() {}
 
-    /// dispatched
+    /// Dispatch events to registered handlers (placeholder).
     pub fn event_dispatcher() {}
 
-    /// Notify event
+    /// Notify all wasm components registered for a given event.
+    ///
+    /// Encodes the event payload, resolves the registered components,
+    /// initializes stores, and dispatches the event to each component
+    /// sequentially.
+    ///
+    /// # Arguments
+    /// * `event` - The event to dispatch.
+    /// * `event_context_provider` - Closure that builds an `EventContext` from each store.
+    ///
+    /// # Returns
+    /// * `Ok(())` - All components notified successfully.
+    /// * `Err(anyhow::Error)` - Encoding or dispatch failure.
     pub async fn notify_all<F>(
         event: Arc<cosmox_api::Event>,
         event_context_provider: F,
@@ -432,9 +652,10 @@ impl PluginManager {
         let current_task_name = "notify event";
 
         let (components_for_current_event, engine) = {
-            let plugin_manager = PLUGIN_MANAGER.lock().unwrap();
+            let plugin_manager = PluginManager::get_plugin_manager();
             let engine = plugin_manager.engine.clone();
             let components_for_current_event = match plugin_manager
+                .plugin_loader
                 .event_map_to_wasm_components
                 .get(&event.into_key())
             {
@@ -518,66 +739,77 @@ impl PluginManager {
         Ok(())
     }
 
+    /// Register a wasm component as a listener for an event.
+    ///
+    /// When the event fires, the wasm component's handler will be invoked.
+    ///
+    /// # Arguments
+    /// * `event` - The event key to listen for.
+    /// * `wasm_id` - ID of the wasm component to register.
+    ///
+    /// # Returns
+    /// * `Ok(())` - Registration successful.
+    /// * `Err(anyhow::Error)` - Wasm component not found.
     #[inline]
-    pub fn register_wasm_component(wasm_id: PluginWasmId, wasm_component: Arc<WasmComponent>) {
-        PluginManager::get_plugin_manager_mut()
-            .wasm_list
-            .insert(wasm_id, wasm_component);
-    }
-
-    #[inline]
-    pub fn bind_event_for_wasm(
-        event: cosmox_api::EventKey,
-        wasm_id: PluginWasmId,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut plugin_manager = PLUGIN_MANAGER.lock().unwrap();
-        if let Some(wasm_component) = plugin_manager.wasm_list.get(&wasm_id) {
+    pub fn bind_event_for_wasm(event: cosmox_api::EventKey, wasm_id: PluginWasmId) -> Result<()> {
+        let mut plugin_manager = PluginManager::get_plugin_manager_mut();
+        if let Some(wasm_component) = plugin_manager.plugin_loader.get_wasm_compoent(wasm_id) {
             let wasm_component = wasm_component.clone();
 
-            if let Some(target_event_bind_wasm_componets) =
-                plugin_manager.event_map_to_wasm_components.get_mut(&event)
-            {
-                target_event_bind_wasm_componets.push(wasm_component);
-            } else {
-                plugin_manager
-                    .event_map_to_wasm_components
-                    .insert(event, vec![wasm_component]);
-            }
+            plugin_manager
+                .plugin_loader
+                .event_map_to_wasm_components
+                .entry(event)
+                .or_default()
+                .push(wasm_component);
+            Ok(())
+        } else {
+            Err(anyhow!("Not found wasm component by id {wasm_id}"))
         }
-        Ok(())
     }
 
+    /// Remove a wasm component from an event's listener list.
+    ///
+    /// After unbinding, the wasm component will no longer receive
+    /// notifications for the event.
+    ///
+    /// # Arguments
+    /// * `event` - The event key to unbind from.
+    /// * `wasm_id` - ID of the wasm component to remove.
+    ///
+    /// # Returns
+    /// * `Ok(())` - Unbind successful (no-op if not found).
+    /// * `Err(anyhow::Error)` - Plugin manager lock failure.
     #[inline]
     pub fn unbind_event_from_wasm(
         event: cosmox_api::EventKey,
         wasm_id: PluginWasmId,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let mut plugin_manager = PLUGIN_MANAGER.lock().unwrap();
-        if let Some(target_event_bind_wasm_componets) =
-            plugin_manager.event_map_to_wasm_components.get_mut(&event)
-        {
-            for (idx, wasm_component) in target_event_bind_wasm_componets.iter().enumerate() {
-                if wasm_component.id == wasm_id {
-                    target_event_bind_wasm_componets.remove(idx);
-                    break;
-                }
-            }
-        }
+    ) -> Result<()> {
+        let mut plugin_manager = PluginManager::get_plugin_manager_mut();
+        plugin_manager
+            .plugin_loader
+            .event_map_to_wasm_components
+            .entry(event)
+            .and_modify(|x| {
+                x.retain(|wasm_component| wasm_component.id != wasm_id);
+            });
         Ok(())
     }
 
-    /// add media type to cosmox
+    /// Add media types to cosmox.
+    ///
     /// # Arguments
-    /// - `media_types`: A vec of media types.
+    /// * `media_types` - A list of media type strings to register.
+    ///
     /// # Returns
-    /// - `Ok(())` Add media types successful.
-    /// - `Err(bindings_cosmox_types::MediaTypeError)` If it fails the check
+    /// * `Ok(())` - Media types added successfully.
+    /// * `Err(bindings_cosmox_types::MediaTypeError)` - Validation or persistence failure.
     pub async fn push_media_types(
         media_types: Vec<String>,
     ) -> Result<(), bindings_cosmox_types::MediaTypeError> {
         // Validate and update in-memory cache (holding lock briefly)
         {
-            let mut plugin_manager = PLUGIN_MANAGER.lock().unwrap();
+            let mut plugin_manager = PluginManager::get_plugin_manager_mut();
             for media_type in media_types.iter() {
                 if media_type.len() > 32
                     || media_type
@@ -620,24 +852,27 @@ impl PluginManager {
         Ok(())
     }
 
-    /// Get wasm runtime engine
-    /// ```
-    /// get wasm engine
+    /// Get the wasmtime runtime engine.
+    ///
+    /// # Example
     /// ```rust
     /// let engine = PluginManager::get_wasm_engine();
     /// ```
     #[inline]
-    pub fn get_wasm_engine() -> Arc<Engine> {
-        PLUGIN_MANAGER.lock().unwrap().engine.clone()
+    pub fn get_wasm_engine() -> Engine {
+        PluginManager::get_plugin_manager().engine.clone()
     }
 
-    /// get wasm list
-    pub fn get_wasm_list() -> Arc<HashMap<PluginWasmId, Arc<WasmComponent>>> {
-        Arc::new(PLUGIN_MANAGER.lock().unwrap().wasm_list.clone())
-    }
-
+    /// Get the set of MIME types supported by installed plugins.
+    ///
+    /// # Returns
+    /// * `Arc<HashSet<String>>` - Set of supported media type strings.
     pub fn get_supported_media_types() -> Arc<HashSet<String>> {
-        Arc::new(PLUGIN_MANAGER.lock().unwrap().supported_media_types.clone())
+        Arc::new(
+            PluginManager::get_plugin_manager()
+                .supported_media_types
+                .clone(),
+        )
     }
 }
 
@@ -647,6 +882,6 @@ mod tests {
 
     #[test]
     fn plugin_manager_entity() {
-        println!("{:#?}", PLUGIN_MANAGER.lock().unwrap());
+        println!("{:#?}", PluginManager::get_plugin_manager());
     }
 }

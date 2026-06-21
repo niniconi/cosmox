@@ -4,9 +4,9 @@ use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Component, Path, PathBuf};
-use tar::{Archive, Builder};
+use tar::Builder;
 
 use crate::cargo::CargoToml;
 
@@ -231,7 +231,17 @@ pub fn pack(
 /// - Any path traversal attempt (e.g., `..`) is detected.
 /// - Multiple root directories or root-level files are found.
 /// - The dynamically detected root is a file rather than a directory.
-pub fn validate_archive_structure<T: Read>(archive: &mut Archive<T>) -> Result<PathBuf> {
+pub fn validate_archive_structure<P: AsRef<Path>>(archive_path: P) -> Result<PathBuf> {
+    let tar_gz = File::open(&archive_path).with_context(|| {
+        format!(
+            "Failed to open archive: {:?}",
+            archive_path.as_ref().display()
+        )
+    })?;
+
+    let decoder = GzDecoder::new(tar_gz);
+    let mut archive = tar::Archive::new(decoder);
+
     // Since Archive<T> requires exclusive access to iterate via entries(),
     // but we only have a shared reference `&Archive<T>`, we must use unchecked_entries().
     let entries = archive
@@ -285,21 +295,21 @@ pub fn validate_archive_structure<T: Read>(archive: &mut Archive<T>) -> Result<P
 }
 
 pub fn unpack(archive_path: impl AsRef<Path>, dst_path: impl AsRef<Path>) -> Result<PathBuf> {
-    let archive = PathBuf::from(archive_path.as_ref());
+    let archive_path = PathBuf::from(archive_path.as_ref());
     let dst = PathBuf::from(dst_path.as_ref());
 
     log::info!("--- Extracting plugin archive ---");
-    log::info!("▶ Extracting {:?} to {:?}", archive, dst);
+    log::info!("▶ Extracting {:?} to {:?}", archive_path, dst);
 
-    let tar_gz =
-        File::open(&archive).with_context(|| format!("Failed to open archive: {:?}", archive))?;
+    let archive_root_directory = validate_archive_structure(&archive_path)?;
+    let tar_gz = File::open(&archive_path)
+        .with_context(|| format!("Failed to open archive: {:?}", archive_path))?;
     let decoder = GzDecoder::new(tar_gz);
     let mut archive_reader = tar::Archive::new(decoder);
-    let archive_root_directory = validate_archive_structure(&mut archive_reader)?;
     archive_reader
         .unpack(&dst)
-        .with_context(|| format!("Failed to extract to {:?}", dst))?;
+        .map_err(|err| anyhow!("Failed to extract to {dst:?}: {err}"))?;
 
-    log::info!("✅ Successfully extracted {:?} to {:?}", archive, dst);
+    log::info!("✅ Successfully extracted {:?} to {:?}", archive_path, dst);
     Ok(dst.join(archive_root_directory))
 }

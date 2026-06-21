@@ -4,30 +4,35 @@ use std::{
     fmt::{Debug, Display},
     ops::{AddAssign, Deref},
     path::PathBuf,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{self, AtomicBool},
+    },
 };
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use wasmtime::component::{Component, Linker};
 
-use crate::plugin_loader::ComponentRunStates;
+use crate::plugin_loader::{ComponentRunStates, PluginPreloadError};
 
-#[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
 pub struct PluginId(u64);
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct PluginName(String);
 
-#[derive(Debug, Default, Hash, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
 pub struct PluginWasmId(u64);
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct PluginWasmName(String);
 
 pub type Plugin = Arc<PluginRaw>;
+pub type WasmComponent = Arc<WasmComponentRaw>;
+pub type WasmUiExtension = Arc<WasmUiExtensionRaw>;
 
-pub struct WasmComponent {
+pub struct WasmComponentRaw {
     pub id: PluginWasmId,
     pub name: PluginWasmName,
     pub plugin_id: PluginId,
@@ -36,33 +41,59 @@ pub struct WasmComponent {
     pub linker: Arc<Linker<ComponentRunStates>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum PluginRaw {
     ExternalPlugin {
         id: PluginId,
+        enable: AtomicBool,
         version: Version,
         name: PluginName,
         description: String,
         author: String,
         email: String,
         permission: Vec<String>,
-        wasm_extensions: Option<HashMap<PluginWasmId, Arc<WasmComponent>>>,
-        wasm_ui_extensions: Option<HashMap<PluginWasmId, Arc<WasmUiExtension>>>,
+        wasm_extensions: Option<HashMap<PluginWasmId, WasmComponent>>,
+        wasm_ui_extensions: Option<HashMap<PluginWasmId, WasmUiExtension>>,
         dependencies: Option<Vec<Dependency>>,
         conflicts: Option<Vec<Dependency>>,
     },
 
     BuiltinPlugin {
         id: PluginId,
-        version: Version,
+        enable: AtomicBool,
         name: PluginName,
+        version: Version,
         description: String,
     },
 }
 
+#[derive(Debug, Clone)]
+pub enum LazyLoadPlugin {
+    BuiltinPlugin {
+        name: PluginName,
+        version: Version,
+        description: String,
+    },
+    ExternalPlugin {
+        name: PluginName,
+        author: String,
+        version: Version,
+        description: String,
+        path: PathBuf,
+        email: String,
+        permission: Vec<String>,
+        dependencies: Option<Vec<Dependency>>,
+        conflicts: Option<Vec<Dependency>>,
+    },
+    InvalidPlugin {
+        name: PluginName,
+        error: PluginPreloadError,
+    },
+}
+
 #[derive(Debug)]
-pub struct WasmUiExtension {
+pub struct WasmUiExtensionRaw {
     pub path: PathBuf,
 }
 
@@ -146,6 +177,33 @@ impl PluginRaw {
             Self::ExternalPlugin { name, .. } => name.clone(),
         }
     }
+
+    pub fn get_enable(&self) -> bool {
+        match &self {
+            Self::BuiltinPlugin { enable, .. } => enable.load(atomic::Ordering::Relaxed),
+            Self::ExternalPlugin { enable, .. } => enable.load(atomic::Ordering::Relaxed),
+        }
+    }
+
+    pub fn set_enable(&self, status: bool) {
+        match &self {
+            Self::BuiltinPlugin { enable, .. } => {
+                enable.store(status, atomic::Ordering::Relaxed);
+            }
+            Self::ExternalPlugin { enable, .. } => {
+                enable.store(status, atomic::Ordering::Relaxed);
+            }
+        }
+    }
+
+    pub fn enable(&self) {
+        self.set_enable(true);
+    }
+
+    pub fn disable(&self) {
+        self.set_enable(false);
+    }
+
     pub fn version(&self) -> &Version {
         match self {
             Self::BuiltinPlugin { version, .. } => version,
@@ -332,7 +390,7 @@ impl Display for Version {
     }
 }
 
-impl Debug for WasmComponent {
+impl Debug for WasmComponentRaw {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
