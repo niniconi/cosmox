@@ -642,7 +642,7 @@ impl PluginManager {
     /// * `Ok(())` - All components notified successfully.
     /// * `Err(anyhow::Error)` - Encoding or dispatch failure.
     pub async fn notify_all<F>(
-        event: Arc<cosmox_api::Event>,
+        event: Arc<cosmox_api::event::Event>,
         event_context_provider: F,
     ) -> Result<()>
     where
@@ -751,7 +751,10 @@ impl PluginManager {
     /// * `Ok(())` - Registration successful.
     /// * `Err(anyhow::Error)` - Wasm component not found.
     #[inline]
-    pub fn bind_event_for_wasm(event: cosmox_api::EventKey, wasm_id: PluginWasmId) -> Result<()> {
+    pub fn bind_event_for_wasm(
+        event: cosmox_api::event::EventKey,
+        wasm_id: PluginWasmId,
+    ) -> Result<()> {
         let mut plugin_manager = PluginManager::get_plugin_manager_mut();
         if let Some(wasm_component) = plugin_manager.plugin_loader.get_wasm_compoent(wasm_id) {
             let wasm_component = wasm_component.clone();
@@ -782,7 +785,7 @@ impl PluginManager {
     /// * `Err(anyhow::Error)` - Plugin manager lock failure.
     #[inline]
     pub fn unbind_event_from_wasm(
-        event: cosmox_api::EventKey,
+        event: cosmox_api::event::EventKey,
         wasm_id: PluginWasmId,
     ) -> Result<()> {
         let mut plugin_manager = PluginManager::get_plugin_manager_mut();

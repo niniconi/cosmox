@@ -16,7 +16,7 @@ use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 use bindings::cosmox::plugin::context as bindings_context;
 use bindings::cosmox::plugin::cosmox_api as bindings_cosmox_api;
 use bindings::cosmox::plugin::cosmox_types as bindings_cosmox_types;
-use cosmox_api::{self, Event};
+use cosmox_api::{self, event::Event};
 use wasmtime_wasi_http::{WasiHttpCtx, WasiHttpView};
 
 use crate::plugin_manager::PluginManager;
@@ -137,7 +137,7 @@ pub struct PluginLoader {
     wasm_components: Vec<Option<WasmComponent>>,
     wasm_components_ids_bitmap: [u64; PLUGIN_WASM_ID_BITMAP_SIZE],
 
-    pub event_map_to_wasm_components: HashMap<cosmox_api::EventKey, Vec<WasmComponent>>,
+    pub event_map_to_wasm_components: HashMap<cosmox_api::event::EventKey, Vec<WasmComponent>>,
 
     pub plugin_enable_count: usize,
 
@@ -183,7 +183,7 @@ impl WasiHttpView for ComponentRunStates {
 }
 
 pub struct CosmoxPluginData {
-    pub bind_events: Mutex<Vec<Arc<cosmox_api::Event>>>,
+    pub bind_events: Mutex<Vec<Arc<cosmox_api::event::Event>>>,
     pub plugin_id: PluginId,
     pub wasm_id: PluginWasmId,
     pub name: PluginWasmName,

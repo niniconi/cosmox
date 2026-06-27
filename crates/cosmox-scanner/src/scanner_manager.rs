@@ -4,7 +4,13 @@ use std::{
     sync::{Arc, Mutex, atomic::AtomicU64},
 };
 
-use cosmox_api::metadata::{Metadata, MetadataType};
+use cosmox_api::{
+    event::{
+        Event, EventPayload,
+        payloads::{OnMetadataLocalTreeReadyEventContext, OnMetadataRawTreeReadyEventContext},
+    },
+    metadata::{Metadata, MetadataType},
+};
 use cosmox_backend_data::services::scanner_service::{self, store_metadata};
 use cosmox_plugin_manager::{Resource, plugin_manager::bindings_context};
 use cosmox_plugin_manager::{
@@ -66,9 +72,12 @@ pub async fn start_scanner(
             log::debug!("Metadata tree been ready");
             let count = Arc::new(AtomicU64::new(count));
 
-            let event = Arc::new(cosmox_api::Event::OnMetadataRawTreeReady(
-                cosmox_api::EventPayload::Data(()),
-            ));
+            let event = Arc::new(Event::OnMetadataRawTreeReady(EventPayload::Data(
+                OnMetadataRawTreeReadyEventContext {
+                    lid: scanner_context.lid,
+                    r#type: scanner_context.library_type.clone(),
+                },
+            )));
 
             let _ = PluginManager::notify_all(event, |store_mut_ref| {
                 let resource_metadata_context: Resource<MetadataContext> =
@@ -99,9 +108,13 @@ pub async fn start_scanner(
             .await
             .inspect_err(|e| log::error!("Failed to notify OnMetadataRawTreeReady event: {e}"));
 
-            let event = Arc::new(cosmox_api::Event::OnMetadataLocalTreeReady(
-                cosmox_api::EventPayload::Data(()),
-            ));
+            let event = Arc::new(Event::OnMetadataLocalTreeReady(EventPayload::Data(
+                OnMetadataLocalTreeReadyEventContext {
+                    lid: scanner_context.lid,
+                    r#type: scanner_context.library_type.clone(),
+                    from_plugins: vec![],
+                },
+            )));
 
             let _ = PluginManager::notify_all(event, |store_mut_ref| {
                 let resource_metadata_context: Resource<MetadataContext> =
