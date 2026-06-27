@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
 use bincode::{self, Decode, Encode};
 
+#[cfg(feature = "plugin")]
 pub mod api;
 pub mod metadata;
 

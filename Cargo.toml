@@ -83,7 +83,7 @@ cosmox-adapter-ffi = { path = "crates/cosmox-adapter-ffi" }
 cosmox-adapter-ipc = { path = "crates/cosmox-adapter-ipc" }
 cosmox-adapter-web = { path = "crates/cosmox-adapter-web" }
 cosmox-agent = { path = "crates/cosmox-agent" }
-cosmox-api = { path = "crates/cosmox-api" }
+cosmox-api = { path = "crates/cosmox-api", default-features = false }
 cosmox-backend-api = { path = "crates/cosmox-backend-api" }
 cosmox-backend-data = { path = "crates/cosmox-backend-data" }
 cosmox-configuration = { path = "crates/cosmox-configuration" }

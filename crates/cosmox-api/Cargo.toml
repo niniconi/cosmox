@@ -13,4 +13,9 @@ bincode = { workspace = true }
 cosmox-macros = { workspace = true }
 log = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["derive", "rc"] }
-wit-bindgen = { workspace = true, features = ["async"] }
+wit-bindgen = { workspace = true, optional = true, features = ["async"] }
+
+[features]
+default = ["plugin"]
+
+plugin = ["dep:wit-bindgen"]
