@@ -7,7 +7,7 @@ use cosmox_backend_api::{
     },
     message,
 };
-use cosmox_macros::{actix_web_error, auto_webapi_doc};
+use cosmox_macros::actix_web_error;
 use serde_qs::web::QsQuery;
 
 use crate::into_message;
@@ -19,7 +19,6 @@ actix_web_error! {
     }
 }
 
-#[auto_webapi_doc]
 #[get("/search")]
 pub async fn search(
     ctx: web::ReqData<Context<'_>>,

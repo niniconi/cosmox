@@ -8,7 +8,7 @@ use cosmox_backend_api::api::user::{
 };
 use cosmox_backend_api::message::{self};
 use cosmox_backend_api::{Context, api};
-use cosmox_macros::{actix_web_error, auto_webapi_doc};
+use cosmox_macros::actix_web_error;
 
 use crate::into_message;
 
@@ -60,7 +60,6 @@ pub async fn query(
 /// get user
 ///
 /// get user entity by uid
-#[auto_webapi_doc]
 #[get("/{uid}")]
 pub async fn get(ctx: web::ReqData<Context<'_>>, uid: web::Path<u64>) -> impl Responder {
     into_message!(api::user::get_user(&mut ctx.into_inner(), *uid).await)

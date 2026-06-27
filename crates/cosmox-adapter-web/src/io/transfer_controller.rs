@@ -10,7 +10,7 @@ use cosmox_backend_api::{
     io::{self, transfer::FileError},
     message::{self, ApiError},
 };
-use cosmox_macros::{actix_web_error, auto_webapi_doc};
+use cosmox_macros::actix_web_error;
 
 use crate::{into_message, message::Wrapper};
 
@@ -32,7 +32,6 @@ actix_web_error! {
     }
 }
 
-#[auto_webapi_doc]
 #[post("/push")]
 pub async fn push(
     ctx: web::ReqData<Context<'_>>,

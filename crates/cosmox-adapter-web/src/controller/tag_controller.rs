@@ -10,7 +10,7 @@ use cosmox_backend_api::{
     },
     message,
 };
-use cosmox_macros::{actix_web_error, auto_webapi_doc};
+use cosmox_macros::actix_web_error;
 
 use crate::into_message;
 
@@ -68,7 +68,6 @@ pub async fn query(
     into_message!(api::tag::query(&mut ctx.into_inner(), params.into_inner()).await)
 }
 
-#[auto_webapi_doc]
 #[get("/group/query")]
 pub async fn query_group(
     ctx: web::ReqData<Context<'_>>,
@@ -77,7 +76,6 @@ pub async fn query_group(
     into_message!(api::tag::query_group(&mut ctx.into_inner(), params.into_inner()).await)
 }
 
-#[auto_webapi_doc]
 #[get("/catalog")]
 pub async fn catalog(ctx: web::ReqData<Context<'_>>) -> impl Responder {
     into_message!(api::tag::catalog(&mut ctx.into_inner()).await)

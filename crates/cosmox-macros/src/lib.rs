@@ -1,27 +1,17 @@
 use proc_macro::TokenStream;
-use syn::{DeriveInput, ItemFn, ItemStruct, parse_macro_input};
+use syn::{DeriveInput, ItemStruct, parse_macro_input};
 
 use crate::{
-    actix_web_error::ActixWebErrorInput, api_doc::expand_attr_auto_webapi_doc,
-    metadata::expand_derive_metadata, page::expand_attr_page_helper,
+    actix_web_error::ActixWebErrorInput, metadata::expand_derive_metadata,
+    page::expand_attr_page_helper,
 };
 
 extern crate proc_macro;
 mod actix_web_error;
-mod api_doc;
 mod metadata;
 mod page;
 mod rkyv_ipc_view;
 mod utils;
-
-/// For `webapi` documentation generation.
-#[proc_macro_attribute]
-pub fn auto_webapi_doc(_attr: TokenStream, input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as ItemFn);
-    expand_attr_auto_webapi_doc(input)
-        .unwrap_or_else(syn::Error::into_compile_error)
-        .into()
-}
 
 /// Automatically implements `actix-web`'s `ResponseError` trait.
 ///
