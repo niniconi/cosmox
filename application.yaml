@@ -31,7 +31,9 @@ cosmox:
   proxy:
     http: "http://proxy.server:8889"
     https: "http://proxy.server:8889"
-  bt:
+  state:
+    path: "test/state"
+  qbittorrent:
     server: "http://127.0.0.1:7070"
     username: "admin"
     password: "123456"
