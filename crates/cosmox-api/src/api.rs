@@ -8,6 +8,8 @@ pub mod bindings {
         path: "wit",
         // the name of the world in the `*.wit` input file
         world: "plugin-host-world",
+        pub_export_macro: true,
+        default_bindings_module: "cosmox_api::api::bindings"
     });
 }
 
