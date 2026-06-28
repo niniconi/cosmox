@@ -90,7 +90,7 @@ pub async fn create_library_with_tags_and_paths(
     // insert into database
     let result = db
         .clone()
-        .transaction::<_, (libraries::Model, Vec<_>, Vec<_>), LibraryError>(|_txn| {
+        .transaction::<_, (libraries::Model, Vec<_>, Vec<_>), LibraryError>(|txn| {
             Box::pin(async move {
                 let current_datetime = Utc::now().naive_utc();
                 let library = libraries::ActiveModel {
@@ -102,7 +102,7 @@ pub async fn create_library_with_tags_and_paths(
                     ..Default::default()
                 };
                 let library = library
-                    .insert(db.as_ref())
+                    .insert(txn)
                     .await
                     .inspect_err(|err| log::error!("{err}"))
                     .map_err(|err| {
@@ -119,7 +119,7 @@ pub async fn create_library_with_tags_and_paths(
                             ..Default::default()
                         };
                         library_tag_relation
-                            .insert(db.as_ref())
+                            .insert(txn)
                             .await
                             .inspect_err(|err| log::error!("{err}"))
                             .map_err(|err| {
@@ -142,7 +142,7 @@ pub async fn create_library_with_tags_and_paths(
                             ..Default::default()
                         };
                         library_path
-                            .insert(db.as_ref())
+                            .insert(txn)
                             .await
                             .inspect_err(|err| log::error!("{err}"))
                             .map_err(|err| {

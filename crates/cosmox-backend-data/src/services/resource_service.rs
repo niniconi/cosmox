@@ -174,7 +174,7 @@ pub async fn add_tags_for_resource(
     let db = get_db_connection().await;
     let result = db
         .clone()
-        .transaction::<_, Vec<resources_related_tags::Model>, ResourceError>(|_txn| {
+        .transaction::<_, Vec<resources_related_tags::Model>, ResourceError>(|txn| {
             Box::pin(async move {
                 let resource_tag_relations = tags
                     .iter()
@@ -186,7 +186,7 @@ pub async fn add_tags_for_resource(
                     .collect::<Vec<_>>();
 
                 resources_related_tags::Entity::insert_many(resource_tag_relations)
-                    .exec(db.as_ref())
+                    .exec(txn)
                     .await
                     .inspect_err(|err| log::error!("{err}"))
                     .map_err(|err| {
