@@ -89,9 +89,8 @@ pub async fn push(
                 .await
             )
         }
-        "application/json" => Ok(unimplemented!(
-            "Not implemented upload file by `application/json`"
-        )),
+        "application/json" => Ok(HttpResponse::NotImplemented()
+            .body("Not implemented upload file by `application/json`")),
         "application/x-www-form-urlencoded" => Ok(HttpResponse::NotImplemented()
             .body("Not implemented upload file by `application/x-www-form-urlencoded`")),
         _ => Err(Wrapper(ApiError::Logic(
