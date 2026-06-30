@@ -50,7 +50,7 @@ pub extern "C" fn cosmox_client_new(
             as *mut std::ffi::c_void,
         "direct" => Box::into_raw(Box::new(create_client::<DirectApi>(hostname, port)))
             as *mut std::ffi::c_void,
-        _ => return std::ptr::null_mut(),
+        _ => std::ptr::null_mut(),
     }
 }
 
