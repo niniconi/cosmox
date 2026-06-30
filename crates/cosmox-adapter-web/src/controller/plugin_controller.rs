@@ -45,7 +45,7 @@ pub async fn install_plugin(
 }
 
 #[post("/uninstall")]
-pub async fn uninstall_plugin(ctx: web::ReqData<Context<'_>>) -> impl Responder {
+pub async fn uninstall_plugin(_ctx: web::ReqData<Context<'_>>) -> impl Responder {
     HttpResponse::NotImplemented().body("Uninstall plugin api is not yet implemented.")
 }
 

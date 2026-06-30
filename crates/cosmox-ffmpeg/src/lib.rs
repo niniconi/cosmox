@@ -195,6 +195,9 @@
 //!
 //! This is not yet implemented and is a future optimisation opportunity.
 
+#![allow(unused_variables)]
+#![allow(dead_code)]
+
 use ffmpeg_next as ffmpeg;
 
 pub mod hw_accel;

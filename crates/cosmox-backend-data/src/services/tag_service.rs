@@ -90,7 +90,7 @@ pub async fn add_tag_group(label: String) -> Result<u64, TagError> {
     };
     let tag_group = tag_group.insert(db.as_ref()).await.map_err(|err| {
         if let Some(sql_err) = err.sql_err()
-            && let SqlErr::UniqueConstraintViolation(message) = sql_err
+            && let SqlErr::UniqueConstraintViolation(_) = sql_err
         // TODO check field
         {
             TagError::AlreadyExists(format!("group {label}"))
@@ -177,7 +177,7 @@ pub async fn add_tag(label: String, tgid: u64) -> Result<u64, TagError> {
     };
     let tag = tag.insert(db.as_ref()).await.map_err(|err| {
         if let Some(sql_err) = err.sql_err()
-            && let SqlErr::UniqueConstraintViolation(message) = sql_err
+            && let SqlErr::UniqueConstraintViolation(_) = sql_err
         // TODO check field
         {
             TagError::AlreadyExists(format!("{tgid}:{label}"))

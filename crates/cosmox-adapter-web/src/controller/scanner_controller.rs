@@ -35,7 +35,7 @@ pub async fn scan_all(ctx: web::ReqData<Context<'_>>) -> impl Responder {
 }
 
 #[post("/task/add")]
-pub async fn add_task(ctx: web::ReqData<Context<'_>>) -> impl Responder {
+pub async fn add_task(_ctx: web::ReqData<Context<'_>>) -> impl Responder {
     HttpResponse::NotImplemented().body("Add task api is not yet implemented.")
 }
 
