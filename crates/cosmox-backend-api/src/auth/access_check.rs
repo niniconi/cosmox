@@ -4,7 +4,7 @@ use cosmox_backend_data::{
     RequestUser, RequestUserInner,
     define::Permission,
     services::{
-        auth::{self, Claims},
+        auth,
         role_permission_service::{self, AuthError},
     },
 };
@@ -189,8 +189,4 @@ pub async fn check_resource_access(ctx: &Context<'_>) -> Result<RequestUser, Aut
     } else {
         Err(AuthError::Unauthorized(String::default()))
     }
-}
-
-pub fn has_role(user: &Claims, role: &str) -> bool {
-    false
 }
