@@ -1,9 +1,7 @@
-use std::pin::Pin;
-
 use reqwest::header::{self, HeaderValue};
 
 use crate::{
-    Api,
+    Api, ApiFuture,
     error::SdkError,
     types::{
         InitStatus, InitializeConfig, InstallPlugin, LibrariesRelatedTags, Library, LibraryAdd,
@@ -246,10 +244,7 @@ impl Api for HttpApi {
         self.token = None;
     }
 
-    fn login(
-        &mut self,
-        payload: UserLogin,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn login(&mut self, payload: UserLogin) -> ApiFuture<'_, ()> {
         Box::pin(async move {
             let token: String = self.post("/user/login", &payload).await?;
             self.token = Some(token);
@@ -257,87 +252,64 @@ impl Api for HttpApi {
         })
     }
 
-    fn system_info(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = Result<SystemInfo, SdkError>> + Send + '_>> {
+    fn system_info(&self) -> ApiFuture<'_, SystemInfo> {
         Box::pin(async move { self.get("/system/info").await })
     }
 
-    fn system_about(&self) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
+    fn system_about(&self) -> ApiFuture<'_, String> {
         Box::pin(async move { self.get("/system/about").await })
     }
 
-    fn system_log(&self) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
+    fn system_log(&self) -> ApiFuture<'_, String> {
         Box::pin(async move { self.get("/system/log").await })
     }
 
-    fn system_restart(&self) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn system_restart(&self) -> ApiFuture<'_, ()> {
         Box::pin(async move {
             let _: String = self.post_path("/system/restart").await?;
             Ok(())
         })
     }
 
-    fn system_shutdown(&self) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn system_shutdown(&self) -> ApiFuture<'_, ()> {
         Box::pin(async move {
             let _: String = self.post_path("/system/shutdown").await?;
             Ok(())
         })
     }
 
-    fn system_delete_all(&self) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn system_delete_all(&self) -> ApiFuture<'_, ()> {
         Box::pin(async move { self.post_path("/system/all/delete").await })
     }
 
-    fn user_get(
-        &self,
-        uid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<User, SdkError>> + Send + '_>> {
+    fn user_get(&self, uid: u64) -> ApiFuture<'_, User> {
         Box::pin(async move { self.get(&format!("/user/{uid}")).await })
     }
 
-    fn user_query(
-        &self,
-        params: UserQueryRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<User>, SdkError>> + Send + '_>> {
+    fn user_query(&self, params: UserQueryRequest) -> ApiFuture<'_, Vec<User>> {
         Box::pin(async move {
             let qs = build_page_query(&params);
             self.get(&format!("/user/query{qs}")).await
         })
     }
 
-    fn user_register(
-        &self,
-        payload: UserSignUp,
-    ) -> Pin<Box<dyn Future<Output = Result<UserResp, SdkError>> + Send + '_>> {
+    fn user_register(&self, payload: UserSignUp) -> ApiFuture<'_, UserResp> {
         Box::pin(async move { self.post("/user/register", &payload).await })
     }
 
-    fn user_delete(
-        &self,
-        uid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn user_delete(&self, uid: u64) -> ApiFuture<'_, ()> {
         Box::pin(async move { self.post_query("/user/delete", &format!("uid={uid}")).await })
     }
 
-    fn user_role_add(
-        &self,
-        payload: UserRoleAddRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn user_role_add(&self, payload: UserRoleAddRequest) -> ApiFuture<'_, ()> {
         Box::pin(async move { self.post("/user/role/add", &payload).await })
     }
 
-    fn library_get(
-        &self,
-        lid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<Library, SdkError>> + Send + '_>> {
+    fn library_get(&self, lid: u64) -> ApiFuture<'_, Library> {
         Box::pin(async move { self.get(&format!("/library/{lid}")).await })
     }
 
-    fn library_query(
-        &self,
-        params: LibraryQueryRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Library>, SdkError>> + Send + '_>> {
+    fn library_query(&self, params: LibraryQueryRequest) -> ApiFuture<'_, Vec<Library>> {
         Box::pin(async move {
             let qs = build_page_query(&params);
             self.get(&format!("/library/query{qs}")).await
@@ -347,137 +319,82 @@ impl Api for HttpApi {
     fn library_add(
         &self,
         payload: LibraryAdd,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<
-                        (Library, Vec<LibrariesRelatedTags>, Vec<LibraryPath>),
-                        SdkError,
-                    >,
-                > + Send
-                + '_,
-        >,
-    > {
+    ) -> ApiFuture<'_, (Library, Vec<LibrariesRelatedTags>, Vec<LibraryPath>)> {
         Box::pin(async move { self.post("/library/add", &payload).await })
     }
 
-    fn library_modify(
-        &self,
-        lid: u64,
-        payload: LibraryModify,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn library_modify(&self, lid: u64, payload: LibraryModify) -> ApiFuture<'_, ()> {
         Box::pin(async move { self.post(&format!("/library/{lid}/modify"), &payload).await })
     }
 
-    fn library_delete(
-        &self,
-        payload: LibraryDeleteRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn library_delete(&self, payload: LibraryDeleteRequest) -> ApiFuture<'_, ()> {
         Box::pin(async move {
             self.post_query("/library/delete", &format!("lid={}", payload.lid))
                 .await
         })
     }
 
-    fn library_type_all(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<LibraryType>, SdkError>> + Send + '_>> {
+    fn library_type_all(&self) -> ApiFuture<'_, Vec<LibraryType>> {
         Box::pin(async move { self.get("/library/types/all").await })
     }
 
-    fn tag_get(
-        &self,
-        tid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<Tag, SdkError>> + Send + '_>> {
+    fn tag_get(&self, tid: u64) -> ApiFuture<'_, Tag> {
         Box::pin(async move { self.get(&format!("/tag/{tid}")).await })
     }
 
-    fn tag_add(
-        &self,
-        payload: TagAddRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<u64, SdkError>> + Send + '_>> {
+    fn tag_add(&self, payload: TagAddRequest) -> ApiFuture<'_, u64> {
         Box::pin(async move { self.post("/tag/add", &payload).await })
     }
 
-    fn tag_query(
-        &self,
-        params: TagQueryRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Tag>, SdkError>> + Send + '_>> {
+    fn tag_query(&self, params: TagQueryRequest) -> ApiFuture<'_, Vec<Tag>> {
         Box::pin(async move {
             let qs = build_page_query(&params);
             self.get(&format!("/tag/query{qs}")).await
         })
     }
 
-    fn tag_group_get(
-        &self,
-        tgid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<TagGroup, SdkError>> + Send + '_>> {
+    fn tag_group_get(&self, tgid: u64) -> ApiFuture<'_, TagGroup> {
         Box::pin(async move { self.get(&format!("/tag/group/{tgid}")).await })
     }
 
-    fn tag_group_add(
-        &self,
-        payload: TagGroupAddRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<u64, SdkError>> + Send + '_>> {
+    fn tag_group_add(&self, payload: TagGroupAddRequest) -> ApiFuture<'_, u64> {
         Box::pin(async move { self.post("/tag/group/add", &payload).await })
     }
 
-    fn tag_group_delete(
-        &self,
-        payload: TagGroupDeleteRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn tag_group_delete(&self, payload: TagGroupDeleteRequest) -> ApiFuture<'_, ()> {
         Box::pin(async move {
             self.post_query("/tag/group/delete", &format!("tgid={}", payload.tgid))
                 .await
         })
     }
 
-    fn tag_group_query(
-        &self,
-        params: TagGroupQueryRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<TagGroup>, SdkError>> + Send + '_>> {
+    fn tag_group_query(&self, params: TagGroupQueryRequest) -> ApiFuture<'_, Vec<TagGroup>> {
         Box::pin(async move {
             let qs = build_page_query(&params);
             self.get(&format!("/tag/group/query{qs}")).await
         })
     }
 
-    fn tag_catalog(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<TagCatalogEntry>, SdkError>> + Send + '_>> {
+    fn tag_catalog(&self) -> ApiFuture<'_, Vec<TagCatalogEntry>> {
         Box::pin(async move { self.get("/tag/catalog").await })
     }
 
-    fn resource_get(
-        &self,
-        rid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<Resource, SdkError>> + Send + '_>> {
+    fn resource_get(&self, rid: u64) -> ApiFuture<'_, Resource> {
         Box::pin(async move { self.get(&format!("/resource/{rid}")).await })
     }
 
-    fn resource_query(
-        &self,
-        params: ResourceQueryRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Resource>, SdkError>> + Send + '_>> {
+    fn resource_query(&self, params: ResourceQueryRequest) -> ApiFuture<'_, Vec<Resource>> {
         Box::pin(async move {
             let qs = build_page_query(&params);
             self.get(&format!("/resource/query{qs}")).await
         })
     }
 
-    fn resource_add(
-        &self,
-        payload: ResourceAddRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<u64, SdkError>> + Send + '_>> {
+    fn resource_add(&self, payload: ResourceAddRequest) -> ApiFuture<'_, u64> {
         Box::pin(async move { self.post("/resource/add", &payload).await })
     }
 
-    fn resource_modify(
-        &self,
-        rid: u64,
-        payload: ResourceModifyRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn resource_modify(&self, rid: u64, payload: ResourceModifyRequest) -> ApiFuture<'_, ()> {
         Box::pin(async move {
             let _: String = self
                 .post(&format!("/resource/{rid}/modify"), &payload)
@@ -486,21 +403,14 @@ impl Api for HttpApi {
         })
     }
 
-    fn resource_delete(
-        &self,
-        rid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn resource_delete(&self, rid: u64) -> ApiFuture<'_, ()> {
         Box::pin(async move {
             self.post_query("/resource/delete", &format!("rid={rid}"))
                 .await
         })
     }
 
-    fn resource_add_tag(
-        &self,
-        rid: u64,
-        tag_ids: Vec<u64>,
-    ) -> Pin<Box<dyn Future<Output = Result<serde_json::Value, SdkError>> + Send + '_>> {
+    fn resource_add_tag(&self, rid: u64, tag_ids: Vec<u64>) -> ApiFuture<'_, serde_json::Value> {
         Box::pin(async move {
             self.post(
                 &format!("/resource/{rid}/tag/add"),
@@ -510,53 +420,34 @@ impl Api for HttpApi {
         })
     }
 
-    fn resource_get_metadata(
-        &self,
-        rid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<serde_json::Value, SdkError>> + Send + '_>> {
+    fn resource_get_metadata(&self, rid: u64) -> ApiFuture<'_, serde_json::Value> {
         Box::pin(async move { self.get(&format!("/resource/{rid}/metadata")).await })
     }
 
-    fn acl_query_role(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Role>, SdkError>> + Send + '_>> {
+    fn acl_query_role(&self) -> ApiFuture<'_, Vec<Role>> {
         Box::pin(async move { self.get("/user/acl/query/role").await })
     }
 
-    fn acl_query_permission(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Permission>, SdkError>> + Send + '_>> {
+    fn acl_query_permission(&self) -> ApiFuture<'_, Vec<Permission>> {
         Box::pin(async move { self.get("/user/acl/query/permission").await })
     }
 
-    fn acl_add_role(
-        &self,
-        payload: RoleAddRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn acl_add_role(&self, payload: RoleAddRequest) -> ApiFuture<'_, ()> {
         Box::pin(async move { self.post("/user/acl/role/add", &payload).await })
     }
 
-    fn acl_delete_role(
-        &self,
-        rid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn acl_delete_role(&self, rid: u64) -> ApiFuture<'_, ()> {
         Box::pin(async move {
             self.post_query("/user/acl/role/delete", &format!("rid={rid}"))
                 .await
         })
     }
 
-    fn acl_add_permission(
-        &self,
-        payload: PermissionAddRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn acl_add_permission(&self, payload: PermissionAddRequest) -> ApiFuture<'_, ()> {
         Box::pin(async move { self.post("/user/acl/permission/add", &payload).await })
     }
 
-    fn acl_delete_permission(
-        &self,
-        pid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn acl_delete_permission(&self, pid: u64) -> ApiFuture<'_, ()> {
         Box::pin(async move {
             self.post_query("/user/acl/permission/delete", &format!("pid={pid}"))
                 .await
@@ -566,18 +457,15 @@ impl Api for HttpApi {
     fn acl_add_permission_for_role(
         &self,
         payload: RoleLinkPermissionAddRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    ) -> ApiFuture<'_, ()> {
         Box::pin(async move { self.post("/user/acl/role/permission/add", &payload).await })
     }
 
-    fn plugin_info(&self) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
+    fn plugin_info(&self) -> ApiFuture<'_, String> {
         Box::pin(async move { self.get("/plugin/info").await })
     }
 
-    fn plugin_install(
-        &self,
-        payload: InstallPlugin,
-    ) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
+    fn plugin_install(&self, payload: InstallPlugin) -> ApiFuture<'_, String> {
         Box::pin(async move {
             match payload {
                 InstallPlugin::Url(url) => {
@@ -589,64 +477,39 @@ impl Api for HttpApi {
         })
     }
 
-    fn plugin_uninstall(
-        &self,
-        _id: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn plugin_uninstall(&self, _id: u64) -> ApiFuture<'_, ()> {
         Box::pin(async move { self.post_path("/plugin/uninstall").await })
     }
 
-    fn plugin_enable(
-        &self,
-        id: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn plugin_enable(&self, id: u64) -> ApiFuture<'_, ()> {
         Box::pin(async move { self.post_path(&format!("/plugin/{id}/enable")).await })
     }
 
-    fn plugin_disable(
-        &self,
-        id: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn plugin_disable(&self, id: u64) -> ApiFuture<'_, ()> {
         Box::pin(async move { self.post_path(&format!("/plugin/{id}/disable")).await })
     }
 
-    fn scanner_scan(
-        &self,
-        lid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
+    fn scanner_scan(&self, lid: u64) -> ApiFuture<'_, String> {
         Box::pin(async move { self.post_path(&format!("/scanner/scan/{lid}")).await })
     }
 
-    fn scanner_scan_all(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
+    fn scanner_scan_all(&self) -> ApiFuture<'_, String> {
         Box::pin(async move { self.post_path("/scanner/scan/all").await })
     }
 
-    fn scanner_get_status(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = Result<ScannerStatus, SdkError>> + Send + '_>> {
+    fn scanner_get_status(&self) -> ApiFuture<'_, ScannerStatus> {
         Box::pin(async move { self.get("/scanner/status").await })
     }
 
-    fn scanner_info(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = Result<ScannerInfo, SdkError>> + Send + '_>> {
+    fn scanner_info(&self) -> ApiFuture<'_, ScannerInfo> {
         Box::pin(async move { self.get("/scanner/info").await })
     }
 
-    fn scanner_add_task(
-        &self,
-        payload: ScannerTaskAddRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn scanner_add_task(&self, payload: ScannerTaskAddRequest) -> ApiFuture<'_, ()> {
         Box::pin(async move { self.post("/scanner/task/add", &payload).await })
     }
 
-    fn metadata_query(
-        &self,
-        root_node: u64,
-        depth: usize,
-    ) -> Pin<Box<dyn Future<Output = Result<serde_json::Value, SdkError>> + Send + '_>> {
+    fn metadata_query(&self, root_node: u64, depth: usize) -> ApiFuture<'_, serde_json::Value> {
         Box::pin(async move {
             self.get(&format!(
                 "/metadata/query?root_node={root_node}&depth={depth}"
@@ -655,18 +518,11 @@ impl Api for HttpApi {
         })
     }
 
-    fn metadata_get(
-        &self,
-        rid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<serde_json::Value, SdkError>> + Send + '_>> {
+    fn metadata_get(&self, rid: u64) -> ApiFuture<'_, serde_json::Value> {
         Box::pin(async move { self.get(&format!("/metadata/{rid}")).await })
     }
 
-    fn path_sub_path(
-        &self,
-        path: String,
-        show_hide: bool,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<String>, SdkError>> + Send + '_>> {
+    fn path_sub_path(&self, path: String, show_hide: bool) -> ApiFuture<'_, Vec<String>> {
         Box::pin(async move {
             self.get(&format!(
                 "/scanner/path/list?path={path}&show_hide={show_hide}"
@@ -675,17 +531,11 @@ impl Api for HttpApi {
         })
     }
 
-    fn initialize(
-        &self,
-        payload: InitializeConfig,
-    ) -> Pin<Box<dyn Future<Output = Result<InitStatus, SdkError>> + Send + '_>> {
+    fn initialize(&self, payload: InitializeConfig) -> ApiFuture<'_, InitStatus> {
         Box::pin(async move { self.post("/initialize", &payload).await })
     }
 
-    fn search(
-        &self,
-        params: SearchRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<serde_json::Value, SdkError>> + Send + '_>> {
+    fn search(&self, params: SearchRequest) -> ApiFuture<'_, serde_json::Value> {
         Box::pin(async move {
             let mut parts: Vec<String> = Vec::new();
             parts.push(format!("keyword={}", params.keyword));
@@ -719,36 +569,26 @@ impl Api for HttpApi {
         })
     }
 
-    fn openapi(&self) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
+    fn openapi(&self) -> ApiFuture<'_, String> {
         Box::pin(async move { self.get_text("/openapi.yaml").await })
     }
 
-    fn docs(&self) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
+    fn docs(&self) -> ApiFuture<'_, String> {
         Box::pin(async move { self.get_text("/docs").await })
     }
 
-    fn user_upload_avatar(
-        &self,
-        uid: u64,
-        data: Vec<u8>,
-    ) -> Pin<Box<dyn Future<Output = Result<PushResponse, SdkError>> + Send + '_>> {
+    fn user_upload_avatar(&self, uid: u64, data: Vec<u8>) -> ApiFuture<'_, PushResponse> {
         Box::pin(async move {
             self.post_binary(&format!("/user/{uid}/avatar/upload"), data)
                 .await
         })
     }
 
-    fn item_push(
-        &self,
-        data: Vec<u8>,
-    ) -> Pin<Box<dyn Future<Output = Result<PushResponse, SdkError>> + Send + '_>> {
+    fn item_push(&self, data: Vec<u8>) -> ApiFuture<'_, PushResponse> {
         Box::pin(async move { self.post_binary("/item/push", data).await })
     }
 
-    fn item_pull(
-        &self,
-        id: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, SdkError>> + Send + '_>> {
+    fn item_pull(&self, id: u64) -> ApiFuture<'_, Vec<u8>> {
         Box::pin(async move { self.get_vec(&format!("/item/{id}/pull")).await })
     }
 }

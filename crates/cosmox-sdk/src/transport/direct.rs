@@ -1,7 +1,5 @@
-use std::pin::Pin;
-
 use crate::{
-    Api,
+    Api, ApiFuture,
     error::SdkError,
     types::{
         InitStatus, InitializeConfig, InstallPlugin, LibrariesRelatedTags, Library, LibraryAdd,
@@ -30,10 +28,7 @@ impl Api for DirectApi {
 
     fn logout(&mut self) {}
 
-    fn login(
-        &mut self,
-        _payload: UserLogin,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn login(&mut self, _payload: UserLogin) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
@@ -41,65 +36,42 @@ impl Api for DirectApi {
         })
     }
 
-    fn system_info(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = Result<SystemInfo, SdkError>> + Send + '_>> {
+    fn system_info(&self) -> ApiFuture<'_, SystemInfo> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn system_about(&self) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
+    fn system_about(&self) -> ApiFuture<'_, String> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn system_log(&self) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
+    fn system_log(&self) -> ApiFuture<'_, String> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn system_restart(&self) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn system_restart(&self) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn system_shutdown(&self) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn system_shutdown(&self) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn system_delete_all(&self) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
-        Box::pin(async {
-            Err(SdkError::Internal(
-                "Direct transport not implemented yet".into(),
-            ))
-        })
-    }
-
-    fn user_get(
-        &self,
-        _uid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<User, SdkError>> + Send + '_>> {
-        Box::pin(async {
-            Err(SdkError::Internal(
-                "Direct transport not implemented yet".into(),
-            ))
-        })
-    }
-    fn user_query(
-        &self,
-        _params: UserQueryRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<User>, SdkError>> + Send + '_>> {
+    fn system_delete_all(&self) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
@@ -107,31 +79,14 @@ impl Api for DirectApi {
         })
     }
 
-    fn user_delete(
-        &self,
-        _uid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn user_get(&self, _uid: u64) -> ApiFuture<'_, User> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn user_role_add(
-        &self,
-        _payload: UserRoleAddRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
-        Box::pin(async {
-            Err(SdkError::Internal(
-                "Direct transport not implemented yet".into(),
-            ))
-        })
-    }
-
-    fn library_get(
-        &self,
-        _lid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<Library, SdkError>> + Send + '_>> {
+    fn user_query(&self, _params: UserQueryRequest) -> ApiFuture<'_, Vec<User>> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
@@ -139,10 +94,30 @@ impl Api for DirectApi {
         })
     }
 
-    fn library_query(
-        &self,
-        _params: LibraryQueryRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Library>, SdkError>> + Send + '_>> {
+    fn user_delete(&self, _uid: u64) -> ApiFuture<'_, ()> {
+        Box::pin(async {
+            Err(SdkError::Internal(
+                "Direct transport not implemented yet".into(),
+            ))
+        })
+    }
+    fn user_role_add(&self, _payload: UserRoleAddRequest) -> ApiFuture<'_, ()> {
+        Box::pin(async {
+            Err(SdkError::Internal(
+                "Direct transport not implemented yet".into(),
+            ))
+        })
+    }
+
+    fn library_get(&self, _lid: u64) -> ApiFuture<'_, Library> {
+        Box::pin(async {
+            Err(SdkError::Internal(
+                "Direct transport not implemented yet".into(),
+            ))
+        })
+    }
+
+    fn library_query(&self, _params: LibraryQueryRequest) -> ApiFuture<'_, Vec<Library>> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
@@ -153,47 +128,28 @@ impl Api for DirectApi {
     fn library_add(
         &self,
         _payload: LibraryAdd,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<
-                        (Library, Vec<LibrariesRelatedTags>, Vec<LibraryPath>),
-                        SdkError,
-                    >,
-                > + Send
-                + '_,
-        >,
-    > {
+    ) -> ApiFuture<'_, (Library, Vec<LibrariesRelatedTags>, Vec<LibraryPath>)> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn library_modify(
-        &self,
-        _lid: u64,
-        _payload: LibraryModify,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn library_modify(&self, _lid: u64, _payload: LibraryModify) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn library_delete(
-        &self,
-        _payload: LibraryDeleteRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn library_delete(&self, _payload: LibraryDeleteRequest) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn library_type_all(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<LibraryType>, SdkError>> + Send + '_>> {
+    fn library_type_all(&self) -> ApiFuture<'_, Vec<LibraryType>> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
@@ -201,30 +157,21 @@ impl Api for DirectApi {
         })
     }
 
-    fn tag_get(
-        &self,
-        _tid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<Tag, SdkError>> + Send + '_>> {
+    fn tag_get(&self, _tid: u64) -> ApiFuture<'_, Tag> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn tag_add(
-        &self,
-        _payload: TagAddRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<u64, SdkError>> + Send + '_>> {
+    fn tag_add(&self, _payload: TagAddRequest) -> ApiFuture<'_, u64> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn tag_query(
-        &self,
-        _params: TagQueryRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Tag>, SdkError>> + Send + '_>> {
+    fn tag_query(&self, _params: TagQueryRequest) -> ApiFuture<'_, Vec<Tag>> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
@@ -232,49 +179,35 @@ impl Api for DirectApi {
         })
     }
 
-    fn tag_group_get(
-        &self,
-        _tgid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<TagGroup, SdkError>> + Send + '_>> {
+    fn tag_group_get(&self, _tgid: u64) -> ApiFuture<'_, TagGroup> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn tag_group_add(
-        &self,
-        _payload: TagGroupAddRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<u64, SdkError>> + Send + '_>> {
+    fn tag_group_add(&self, _payload: TagGroupAddRequest) -> ApiFuture<'_, u64> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn tag_group_delete(
-        &self,
-        _payload: TagGroupDeleteRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn tag_group_delete(&self, _payload: TagGroupDeleteRequest) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn tag_group_query(
-        &self,
-        _params: TagGroupQueryRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<TagGroup>, SdkError>> + Send + '_>> {
+    fn tag_group_query(&self, _params: TagGroupQueryRequest) -> ApiFuture<'_, Vec<TagGroup>> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn tag_catalog(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<TagCatalogEntry>, SdkError>> + Send + '_>> {
+    fn tag_catalog(&self) -> ApiFuture<'_, Vec<TagCatalogEntry>> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
@@ -282,61 +215,42 @@ impl Api for DirectApi {
         })
     }
 
-    fn resource_get(
-        &self,
-        _rid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<Resource, SdkError>> + Send + '_>> {
+    fn resource_get(&self, _rid: u64) -> ApiFuture<'_, Resource> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn resource_query(
-        &self,
-        _params: ResourceQueryRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Resource>, SdkError>> + Send + '_>> {
+    fn resource_query(&self, _params: ResourceQueryRequest) -> ApiFuture<'_, Vec<Resource>> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn resource_add(
-        &self,
-        _payload: ResourceAddRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<u64, SdkError>> + Send + '_>> {
+    fn resource_add(&self, _payload: ResourceAddRequest) -> ApiFuture<'_, u64> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn resource_delete(
-        &self,
-        _rid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn resource_delete(&self, _rid: u64) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn resource_add_tag(
-        &self,
-        _rid: u64,
-        _tag_ids: Vec<u64>,
-    ) -> Pin<Box<dyn Future<Output = Result<serde_json::Value, SdkError>> + Send + '_>> {
+    fn resource_add_tag(&self, _rid: u64, _tag_ids: Vec<u64>) -> ApiFuture<'_, serde_json::Value> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn resource_get_metadata(
-        &self,
-        _rid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<serde_json::Value, SdkError>> + Send + '_>> {
+    fn resource_get_metadata(&self, _rid: u64) -> ApiFuture<'_, serde_json::Value> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
@@ -344,58 +258,42 @@ impl Api for DirectApi {
         })
     }
 
-    fn acl_query_role(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Role>, SdkError>> + Send + '_>> {
+    fn acl_query_role(&self) -> ApiFuture<'_, Vec<Role>> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn acl_query_permission(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<Permission>, SdkError>> + Send + '_>> {
+    fn acl_query_permission(&self) -> ApiFuture<'_, Vec<Permission>> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn acl_add_role(
-        &self,
-        _payload: RoleAddRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn acl_add_role(&self, _payload: RoleAddRequest) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn acl_delete_role(
-        &self,
-        _rid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn acl_delete_role(&self, _rid: u64) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn acl_add_permission(
-        &self,
-        _payload: PermissionAddRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn acl_add_permission(&self, _payload: PermissionAddRequest) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn acl_delete_permission(
-        &self,
-        _pid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn acl_delete_permission(&self, _pid: u64) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
@@ -405,7 +303,7 @@ impl Api for DirectApi {
     fn acl_add_permission_for_role(
         &self,
         _payload: RoleLinkPermissionAddRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    ) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
@@ -413,47 +311,35 @@ impl Api for DirectApi {
         })
     }
 
-    fn plugin_info(&self) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
+    fn plugin_info(&self) -> ApiFuture<'_, String> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn plugin_install(
-        &self,
-        _payload: InstallPlugin,
-    ) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
+    fn plugin_install(&self, _payload: InstallPlugin) -> ApiFuture<'_, String> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn plugin_uninstall(
-        &self,
-        _id: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn plugin_uninstall(&self, _id: u64) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn plugin_enable(
-        &self,
-        _id: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn plugin_enable(&self, _id: u64) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn plugin_disable(
-        &self,
-        _id: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn plugin_disable(&self, _id: u64) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
@@ -461,47 +347,35 @@ impl Api for DirectApi {
         })
     }
 
-    fn scanner_scan(
-        &self,
-        _lid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
+    fn scanner_scan(&self, _lid: u64) -> ApiFuture<'_, String> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn scanner_scan_all(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
+    fn scanner_scan_all(&self) -> ApiFuture<'_, String> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn scanner_get_status(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = Result<ScannerStatus, SdkError>> + Send + '_>> {
+    fn scanner_get_status(&self) -> ApiFuture<'_, ScannerStatus> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn scanner_info(
-        &self,
-    ) -> Pin<Box<dyn Future<Output = Result<ScannerInfo, SdkError>> + Send + '_>> {
+    fn scanner_info(&self) -> ApiFuture<'_, ScannerInfo> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn scanner_add_task(
-        &self,
-        _payload: ScannerTaskAddRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn scanner_add_task(&self, _payload: ScannerTaskAddRequest) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
@@ -509,21 +383,14 @@ impl Api for DirectApi {
         })
     }
 
-    fn metadata_query(
-        &self,
-        _root_node: u64,
-        _depth: usize,
-    ) -> Pin<Box<dyn Future<Output = Result<serde_json::Value, SdkError>> + Send + '_>> {
+    fn metadata_query(&self, _root_node: u64, _depth: usize) -> ApiFuture<'_, serde_json::Value> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn metadata_get(
-        &self,
-        _rid: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<serde_json::Value, SdkError>> + Send + '_>> {
+    fn metadata_get(&self, _rid: u64) -> ApiFuture<'_, serde_json::Value> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
@@ -531,11 +398,7 @@ impl Api for DirectApi {
         })
     }
 
-    fn path_sub_path(
-        &self,
-        _path: String,
-        _show_hide: bool,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<String>, SdkError>> + Send + '_>> {
+    fn path_sub_path(&self, _path: String, _show_hide: bool) -> ApiFuture<'_, Vec<String>> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
@@ -543,10 +406,7 @@ impl Api for DirectApi {
         })
     }
 
-    fn initialize(
-        &self,
-        _payload: InitializeConfig,
-    ) -> Pin<Box<dyn Future<Output = Result<InitStatus, SdkError>> + Send + '_>> {
+    fn initialize(&self, _payload: InitializeConfig) -> ApiFuture<'_, InitStatus> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
@@ -554,10 +414,7 @@ impl Api for DirectApi {
         })
     }
 
-    fn search(
-        &self,
-        _query: SearchRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<serde_json::Value, SdkError>> + Send + '_>> {
+    fn search(&self, _query: SearchRequest) -> ApiFuture<'_, serde_json::Value> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
@@ -565,25 +422,14 @@ impl Api for DirectApi {
         })
     }
 
-    fn openapi(&self) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
+    fn openapi(&self) -> ApiFuture<'_, String> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn docs(&self) -> Pin<Box<dyn Future<Output = Result<String, SdkError>> + Send + '_>> {
-        Box::pin(async {
-            Err(SdkError::Internal(
-                "Direct transport not implemented yet".into(),
-            ))
-        })
-    }
-
-    fn item_push(
-        &self,
-        _data: Vec<u8>,
-    ) -> Pin<Box<dyn Future<Output = Result<PushResponse, SdkError>> + Send + '_>> {
+    fn docs(&self) -> ApiFuture<'_, String> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
@@ -591,31 +437,7 @@ impl Api for DirectApi {
         })
     }
 
-    fn item_pull(
-        &self,
-        _id: u64,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, SdkError>> + Send + '_>> {
-        Box::pin(async {
-            Err(SdkError::Internal(
-                "Direct transport not implemented yet".into(),
-            ))
-        })
-    }
-    fn user_register(
-        &self,
-        _payload: UserSignUp,
-    ) -> Pin<Box<dyn Future<Output = Result<UserResp, SdkError>> + Send + '_>> {
-        Box::pin(async {
-            Err(SdkError::Internal(
-                "Direct transport not implemented yet".into(),
-            ))
-        })
-    }
-    fn resource_modify(
-        &self,
-        _rid: u64,
-        _payload: ResourceModifyRequest,
-    ) -> Pin<Box<dyn Future<Output = Result<(), SdkError>> + Send + '_>> {
+    fn item_push(&self, _data: Vec<u8>) -> ApiFuture<'_, PushResponse> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
@@ -623,11 +445,29 @@ impl Api for DirectApi {
         })
     }
 
-    fn user_upload_avatar(
-        &self,
-        _uid: u64,
-        _data: Vec<u8>,
-    ) -> Pin<Box<dyn Future<Output = Result<PushResponse, SdkError>> + Send + '_>> {
+    fn item_pull(&self, _id: u64) -> ApiFuture<'_, Vec<u8>> {
+        Box::pin(async {
+            Err(SdkError::Internal(
+                "Direct transport not implemented yet".into(),
+            ))
+        })
+    }
+    fn user_register(&self, _payload: UserSignUp) -> ApiFuture<'_, UserResp> {
+        Box::pin(async {
+            Err(SdkError::Internal(
+                "Direct transport not implemented yet".into(),
+            ))
+        })
+    }
+    fn resource_modify(&self, _rid: u64, _payload: ResourceModifyRequest) -> ApiFuture<'_, ()> {
+        Box::pin(async {
+            Err(SdkError::Internal(
+                "Direct transport not implemented yet".into(),
+            ))
+        })
+    }
+
+    fn user_upload_avatar(&self, _uid: u64, _data: Vec<u8>) -> ApiFuture<'_, PushResponse> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
