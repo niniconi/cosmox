@@ -28,6 +28,9 @@ actix_web_error! {
         MetadataUpdateFailed() => {code: 500},
         DeletionConflict() => {code: 409},
         MaxLibrariesExceeded() => {code: 400},
+        PathOverlap() => {code: 409},
+        PathNotFound() => {code: 404},
+        PathPermissionDenied() => {code: 403},
         InternalError() => {code: 500},
     }
 }

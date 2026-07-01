@@ -1,4 +1,8 @@
-use std::{str::FromStr, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+    sync::Arc,
+};
 
 use chrono::Utc;
 use common::message::Pagination;
@@ -7,7 +11,7 @@ use futures_util::future::try_join_all;
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::{NotSet, Set},
-    DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder, TransactionTrait, TryInsertResult,
+    EntityTrait, PaginatorTrait, QueryOrder, TransactionTrait, TryInsertResult,
 };
 use serde::{Deserialize, Serialize};
 
@@ -40,6 +44,15 @@ pub enum LibraryError {
 
     #[error("Exceeded maximum number of libraries allowed for user '{0}'.")]
     MaxLibrariesExceeded(u64),
+
+    #[error("Library paths overlap: {0}")]
+    PathOverlap(String),
+
+    #[error("Path not found: {0}")]
+    PathNotFound(String),
+
+    #[error("Permission denied for path: {0}")]
+    PathPermissionDenied(String),
 
     /// Indicates an unexpected server-side issue.
     #[error("Internal server error: {0}")]
@@ -85,7 +98,13 @@ pub async fn create_library_with_tags_and_paths(
     LibraryError,
 > {
     let db = get_db_connection().await;
-    // check
+
+    let overlapping_paths = find_overlapping_paths(&payload.library_paths)?;
+    if !overlapping_paths.is_empty() {
+        let overlapping_paths = overlapping_paths.join(",");
+        log::error!("Failed to create library: contains overlapping paths '{overlapping_paths}'");
+        return Err(LibraryError::PathOverlap(overlapping_paths));
+    }
 
     // insert into database
     let result = db
@@ -255,8 +274,41 @@ pub async fn query_libraries(
     }
 }
 
-pub async fn check_if_paths_overlap(paths: Vec<String>, _db: Arc<DatabaseConnection>) -> bool {
-    true
+/// Returns the overlapping paths, if any.
+fn find_overlapping_paths(paths: &[String]) -> Result<Vec<String>, LibraryError> {
+    let mut sorted_paths: Vec<PathBuf> = vec![];
+    for path in paths {
+        sorted_paths.push(Path::new(path).canonicalize().map_err(|err| {
+            log::error!("Failed to canonicalize path '{path}': {err}");
+            match err.kind() {
+                std::io::ErrorKind::NotFound => LibraryError::PathNotFound(err.to_string()),
+                std::io::ErrorKind::PermissionDenied => {
+                    LibraryError::PathPermissionDenied(err.to_string())
+                }
+                _ => LibraryError::InternalError(err.to_string()),
+            }
+        })?);
+    }
+    // Sorting is key: parent paths will always come before child paths
+    sorted_paths.sort();
+
+    let mut overlapping = Vec::new();
+
+    for i in 0..sorted_paths.len() {
+        for j in i + 1..sorted_paths.len() {
+            if sorted_paths[j].starts_with(&sorted_paths[i]) {
+                overlapping.push(sorted_paths[j].to_string_lossy().into_owned());
+            } else {
+                break;
+            }
+        }
+    }
+
+    // Remove duplicates to prevent a path from being included multiple times by multiple parents
+    overlapping.sort();
+    overlapping.dedup();
+
+    Ok(overlapping)
 }
 
 pub async fn get_all_type() -> Result<Vec<Type>, LibraryError> {
@@ -329,4 +381,137 @@ pub async fn modify_library(lid: u64, payload: ModifyLibraryRequest) -> Result<(
         })?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+
+    /// Create real directories under `/tmp/cosmox_lib_test/{test_name}/` for testing,
+    /// so that `.canonicalize()` succeeds. Each test must pass a unique `test_name`
+    /// to avoid interference when tests run in parallel.
+    fn create_test_dirs(test_name: &str, subdirs: &[&str]) -> Vec<String> {
+        let root = PathBuf::from("/tmp/cosmox_lib_test").join(test_name);
+        let _ = fs::remove_dir_all(&root);
+        subdirs
+            .iter()
+            .map(|d| {
+                let p = root.join(d);
+                fs::create_dir_all(&p).unwrap();
+                p.to_string_lossy().into_owned()
+            })
+            .collect()
+    }
+
+    fn remove_test_dirs(test_name: &str) {
+        let root = PathBuf::from("/tmp/cosmox_lib_test").join(test_name);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn empty_list_returns_no_overlap() {
+        assert!(find_overlapping_paths(&[]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn single_path_returns_no_overlap() {
+        let paths = create_test_dirs("single", &["movies"]);
+        assert!(find_overlapping_paths(&paths).unwrap().is_empty());
+        remove_test_dirs("single");
+    }
+
+    #[test]
+    fn independent_paths_no_overlap() {
+        let paths = create_test_dirs("independent", &["movies", "tv", "music"]);
+        assert!(find_overlapping_paths(&paths).unwrap().is_empty());
+        remove_test_dirs("independent");
+    }
+
+    #[test]
+    fn sibling_subdirs_no_overlap() {
+        let paths = create_test_dirs("siblings", &["media/movies", "media/tv", "media/music"]);
+        assert!(find_overlapping_paths(&paths).unwrap().is_empty());
+        remove_test_dirs("siblings");
+    }
+
+    #[test]
+    fn parent_child_overlap_returns_child() {
+        let paths = create_test_dirs("parent_child", &["media", "media/movies"]);
+        let result = find_overlapping_paths(&paths).unwrap();
+        assert_eq!(result.len(), 1);
+        let expected = paths.iter().find(|p| p.ends_with("media/movies")).unwrap();
+        assert_eq!(&result[0], expected);
+        remove_test_dirs("parent_child");
+    }
+
+    #[test]
+    fn multiple_children_all_returned() {
+        let paths = create_test_dirs("multi_child", &["media", "media/movies", "media/tv"]);
+        let result = find_overlapping_paths(&paths).unwrap();
+        assert_eq!(result.len(), 2);
+        for p in &result {
+            assert!(p.ends_with("media/movies") || p.ends_with("media/tv"));
+        }
+        remove_test_dirs("multi_child");
+    }
+
+    #[test]
+    fn deeply_nested_overlap_dedup() {
+        // a/b/c is a descendant of both `a` and `a/b` — the dedup logic
+        // must ensure it appears only once in the result.
+        let paths = create_test_dirs("deep_nested", &["a", "a/b", "a/b/c"]);
+        let result = find_overlapping_paths(&paths).unwrap();
+        assert_eq!(result.len(), 2);
+        for p in &result {
+            assert!(p.ends_with("a/b") || p.ends_with("a/b/c"));
+        }
+        remove_test_dirs("deep_nested");
+    }
+
+    #[test]
+    fn same_path_twice_reported_as_overlap() {
+        let paths = create_test_dirs("same_path", &["dup", "dup"]);
+        let result = find_overlapping_paths(&paths).unwrap();
+        assert_eq!(result.len(), 1);
+        let expected = paths.iter().find(|p| p.ends_with("dup")).unwrap();
+        assert_eq!(&result[0], expected);
+        remove_test_dirs("same_path");
+    }
+
+    #[test]
+    fn multiple_parents_all_children_returned() {
+        // a/x is child of a, b/y is child of b — both overlaps reported
+        let paths = create_test_dirs("multi_parent", &["a", "a/x", "b", "b/y"]);
+        let result = find_overlapping_paths(&paths).unwrap();
+        assert_eq!(result.len(), 2);
+        for p in &result {
+            assert!(p.ends_with("a/x") || p.ends_with("b/y"));
+        }
+        remove_test_dirs("multi_parent");
+    }
+
+    #[test]
+    fn non_existent_path_returns_error() {
+        let result =
+            find_overlapping_paths(&["/tmp/cosmox_lib_test__nonexistent__xyz".to_string()]);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(LibraryError::PathNotFound(_))));
+    }
+
+    #[test]
+    fn non_existent_path_among_valid_returns_error() {
+        let root = PathBuf::from("/tmp/cosmox_lib_test").join("partial_missing");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("existing")).unwrap();
+        let paths = vec![
+            root.join("existing").to_string_lossy().into_owned(),
+            root.join("does_not_exist").to_string_lossy().into_owned(),
+        ];
+        let result = find_overlapping_paths(&paths);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(LibraryError::PathNotFound(_))));
+        let _ = fs::remove_dir_all(&root);
+    }
 }
