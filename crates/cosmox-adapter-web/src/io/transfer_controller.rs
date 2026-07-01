@@ -1,16 +1,22 @@
 use std::fs::File;
 
 use actix_files::NamedFile;
+use actix_multipart::{Field, Multipart, MultipartError};
 use actix_web::{
     HttpRequest, HttpResponse, Responder, get, post,
     web::{self, Payload},
 };
+use bytes::Bytes;
 use cosmox_backend_api::{
     Context,
-    io::{self, transfer::FileError},
+    io::{
+        self,
+        transfer::{FileError, ItemFile},
+    },
     message::{self, ApiError},
 };
 use cosmox_macros::actix_web_error;
+use futures_util::{Stream, StreamExt};
 
 use crate::{into_message, message::Wrapper};
 
@@ -28,7 +34,26 @@ actix_web_error! {
         InsufficientStorage => {code: 507},
         // Gateway Timeout if waiting for external storage, or Request Timeout if internal file processing took too long
         OperationTimeout() => {code: 504},
+        PathTraversalAttack() => {code: 400},
         InternalError() => {code: 500},
+    }
+}
+
+struct WrapperForMultipartField<T>(pub T);
+
+impl Stream for WrapperForMultipartField<Field> {
+    type Item = Result<Bytes, MultipartError>;
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        std::pin::Pin::new(&mut self.0).poll_next(cx)
+    }
+}
+
+impl ItemFile for WrapperForMultipartField<Field> {
+    fn name(&mut self) -> Option<&str> {
+        Field::name(&self.0)
     }
 }
 
@@ -36,7 +61,8 @@ actix_web_error! {
 pub async fn push(
     ctx: web::ReqData<Context<'_>>,
     request: HttpRequest,
-    payload: Payload,
+    payload_octet_stream: Payload,
+    payload_multipart: Multipart,
 ) -> impl Responder {
     let content_type = request
         .headers()
@@ -44,12 +70,23 @@ pub async fn push(
         .and_then(|v| v.to_str().ok())
         .unwrap_or("application/octet-stream");
     match content_type {
-        t if t.contains("multipart/form-data") => Ok(unimplemented!(
-            "Not implemented upload file by `multipart/form-data`"
-        )),
+        t if t.contains("multipart/form-data") => {
+            let payload_multipart = payload_multipart.map(|x| x.map(WrapperForMultipartField));
+            into_message!(
+                io::transfer::push_item_by_multipart_stream(
+                    &mut ctx.into_inner(),
+                    payload_multipart
+                )
+                .await
+            )
+        }
         "application/octet-stream" => {
             into_message!(
-                io::transfer::push_item_octet_stream(&mut ctx.into_inner(), payload).await
+                io::transfer::push_item_by_octet_stream(
+                    &mut ctx.into_inner(),
+                    payload_octet_stream
+                )
+                .await
             )
         }
         "application/json" => Ok(unimplemented!(

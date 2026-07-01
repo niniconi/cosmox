@@ -8,9 +8,9 @@ use crate::{
     Context, api,
     message::{ApiError, FromService, Message, MessagePayload},
 };
-pub use cosmox_backend_data::services::file_service::FileError;
+pub use cosmox_backend_data::services::file_service::{FileError, ItemFile};
 
-pub async fn push_item_octet_stream<S, E>(
+pub async fn push_item_by_octet_stream<S, E>(
     ctx: &mut Context<'_>,
     payload: S,
 ) -> Result<Message<PushResponse>, ApiError<FileError>>
@@ -20,6 +20,19 @@ where
 {
     ctx.access_ctx.endpoint = api::Endpoint::ItemPush;
     Message::from_service(ctx, file_service::push_item_octet_stream(payload)).await
+}
+
+pub async fn push_item_by_multipart_stream<S, E, T>(
+    ctx: &mut Context<'_>,
+    payload: S,
+) -> Result<Message<PushResponse>, ApiError<FileError>>
+where
+    S: StreamExt<Item = Result<T, E>> + Unpin,
+    T: StreamExt<Item = Result<Bytes, E>> + Unpin + ItemFile,
+    E: std::fmt::Display,
+{
+    ctx.access_ctx.endpoint = api::Endpoint::ItemPush;
+    Message::from_service(ctx, file_service::push_item_multipart_stream(payload)).await
 }
 
 pub async fn pull_item_by_named_file(

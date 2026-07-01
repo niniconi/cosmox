@@ -13,6 +13,7 @@ actix-files = { workspace = true }
 actix-multipart = { workspace = true }
 actix-web = { workspace = true }
 actix-ws = { workspace = true }
+bytes = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 common = { workspace = true }
 cosmox-backend-api = { workspace = true }

@@ -1672,6 +1672,7 @@ dependencies = [
  "actix-multipart",
  "actix-web",
  "actix-ws",
+ "bytes",
  "chrono",
  "common",
  "cosmox-backend-api",
