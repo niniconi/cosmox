@@ -13,6 +13,7 @@
 !banner.txt
 !rustfmt.toml
 !rust-toolchain.toml
+!.cargo
 
 # Crates directory (all subdirectories and Cargo.toml files needed for Docker build)
 !crates/
