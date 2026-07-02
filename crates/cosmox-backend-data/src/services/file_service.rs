@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use bytes::Bytes;
+use common::fs::FileCleanupGuard;
 use common::security::check_new_path_safe;
 use cosmox_configuration::Configuration;
 use futures_util::StreamExt;
@@ -248,7 +249,10 @@ where
 {
     let mut path = path.as_ref().to_path_buf();
     path.push(uuid::Uuid::new_v4().to_string());
-    let path = path.as_path();
+    let path: &Path = path.as_path();
+
+    let mut guard = FileCleanupGuard::new();
+    guard.add_dir(path);
 
     if !path.exists() {
         std::fs::create_dir_all(path)
@@ -326,7 +330,8 @@ where
         total_size += size;
     }
 
-    let pmid = store_path_mapping(path).await?;
+    let pmid = store_path_mapping(&base_dir).await?;
+    guard.disarm();
 
     Ok(PushResponse {
         pmid,
@@ -345,7 +350,10 @@ where
 {
     let mut path = path.as_ref().to_path_buf();
     path.push(uuid::Uuid::new_v4().to_string());
-    let path = path.as_path();
+    let path: &Path = path.as_path();
+
+    let mut guard = FileCleanupGuard::new();
+    guard.add_file(path);
 
     let mut file = File::create(path)
         .await
@@ -371,7 +379,8 @@ where
             })?;
     }
 
-    let pmid = store_path_mapping(path).await?;
+    let pmid = store_path_mapping(&path).await?;
+    guard.disarm();
 
     Ok(PushResponse {
         pmid,
