@@ -57,6 +57,7 @@ jobs:
           args: --all-targets --all-features --workspace -- -D warnings
 
   test:
+    needs: [clippy]
     runs-on: ${{ matrix.os }}
     name: test ${{ matrix.os }}
     strategy:
