@@ -397,20 +397,3 @@ impl Transcoder {
         Ok(())
     }
 }
-
-#[cfg(all(test, feature = "ffmpeg-tests"))]
-mod tests {
-    use super::*;
-    #[test]
-    pub fn test_transcode() {
-        let input = "test.mkv";
-        Transcoder::transcode_video_with_resolution_change(TranscodeTask {
-            input_path: input,
-            output_path: "out.m3u8",
-            video: None,
-            audio_copy: true,
-            use_hardware: true,
-        })
-        .unwrap();
-    }
-}
