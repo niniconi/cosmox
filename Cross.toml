@@ -6,5 +6,5 @@ pre-build = [
     "apt-get install -y libavcodec-dev libavformat-dev libavutil-dev",
     "apt-get install -y libswscale-dev libswresample-dev libavfilter-dev",
     "apt-get install -y libavdevice-dev libpostproc-dev ffmpeg",
-    "apt-get install -y liblua5.5-dev"
+    "apt-get install -y liblua5.4-dev"
 ]

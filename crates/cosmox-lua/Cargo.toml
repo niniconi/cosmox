@@ -8,4 +8,4 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-mlua = { workspace = true, features = ["lua55"] }
+mlua = { workspace = true, features = ["lua54"] }
