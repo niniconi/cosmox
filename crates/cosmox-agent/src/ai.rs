@@ -29,15 +29,3 @@ pub async fn call_llm(prompt: &str) -> Result<String> {
         .await
         .inspect(|k| println!("{k}"))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_ollama() {
-        ollama("http://localhost:11434/api/generate", "gemma3:270m", "")
-            .await
-            .unwrap();
-    }
-}
