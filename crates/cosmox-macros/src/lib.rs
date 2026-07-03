@@ -1,15 +1,16 @@
 use proc_macro::TokenStream;
-use syn::{DeriveInput, ItemStruct, parse_macro_input};
+use syn::{DeriveInput, ItemMod, ItemStruct, parse_macro_input};
 
 use crate::{
     actix_web_error::ActixWebErrorInput, metadata::expand_derive_metadata,
-    page::expand_attr_page_helper,
+    page::expand_attr_page_helper, plugin::PluginAttr,
 };
 
 extern crate proc_macro;
 mod actix_web_error;
 mod metadata;
 mod page;
+mod plugin;
 mod rkyv_ipc_view;
 mod utils;
 
@@ -38,6 +39,17 @@ pub fn actix_web_error(input: TokenStream) -> TokenStream {
 pub fn metdata_derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     expand_derive_metadata(input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// Auto-generate Wax plugin boilerplate from annotated module.
+/// Use on a `mod` block. Supports `#[on_load]`, `#[on_event]`, etc.
+#[proc_macro_attribute]
+pub fn plugin(attr: TokenStream, input: TokenStream) -> TokenStream {
+    let attr = parse_macro_input!(attr as PluginAttr);
+    let input = parse_macro_input!(input as ItemMod);
+    plugin::expand(attr, input)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }
