@@ -3,6 +3,7 @@ use std::{fmt::Write, panic};
 use anyhow::Result;
 use log::{LevelFilter, SetLoggerError};
 
+pub use cosmox_macros::plugin;
 pub mod bindings {
     wit_bindgen::generate!({
         path: "wit",
