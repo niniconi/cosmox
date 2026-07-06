@@ -13,7 +13,7 @@ pub struct Model {
     pub description: Option<String>,
     pub create_datetime: DateTime,
     pub last_update_datetime: DateTime,
-    pub r#type: Option<u64>,
+    pub r#type: u64,
     pub create_by_uid: u64,
     #[sea_orm(has_many)]
     pub libraries_related_tags: HasMany<super::libraries_related_tags::Entity>,

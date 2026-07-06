@@ -135,16 +135,12 @@ pub async fn prepare_context_information(
                         .map(|library_path| library_path.path.clone())
                         .collect();
 
-                    let r#type = if let Some(r#type) = library.r#type {
-                        match Types::find_by_id(r#type).one(db.as_ref()).await {
-                            Ok(r#type) => r#type.map(|x| x.label),
-                            Err(err) => {
-                                log::error!("{err}");
-                                None
-                            }
+                    let r#type = match Types::find_by_id(library.r#type).one(db.as_ref()).await {
+                        Ok(r#type) => r#type.map(|x| x.label),
+                        Err(err) => {
+                            log::error!("{err}");
+                            None
                         }
-                    } else {
-                        None
                     };
 
                     let lid = library.lid;
@@ -195,16 +191,12 @@ pub async fn prepare_context_information(
                 .collect();
 
             if let Some(library) = library {
-                let r#type = if let Some(r#type) = library.r#type {
-                    match Types::find_by_id(r#type).one(db.as_ref()).await {
-                        Ok(r#type) => r#type.map(|x| x.label),
-                        Err(err) => {
-                            log::error!("{err}");
-                            None
-                        }
+                let r#type = match Types::find_by_id(library.r#type).one(db.as_ref()).await {
+                    Ok(r#type) => r#type.map(|x| x.label),
+                    Err(err) => {
+                        log::error!("{err}");
+                        None
                     }
-                } else {
-                    None
                 };
 
                 let lid = library.lid;

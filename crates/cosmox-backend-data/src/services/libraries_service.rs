@@ -118,6 +118,7 @@ pub async fn create_library_with_tags_and_paths(
                     create_datetime: Set(current_datetime),
                     last_update_datetime: Set(current_datetime),
                     create_by_uid: Set(uid),
+                    r#type: Set(payload.r#type),
                     ..Default::default()
                 };
                 let library = library

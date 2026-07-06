@@ -30,7 +30,7 @@ impl MigrationTrait for Migration {
                             .date_time()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(Libraries::Type).big_unsigned().null())
+                    .col(ColumnDef::new(Libraries::Type).big_unsigned().not_null())
                     .col(
                         ColumnDef::new(Libraries::CreateByUid)
                             .big_unsigned()
