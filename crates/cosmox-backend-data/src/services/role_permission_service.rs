@@ -296,7 +296,7 @@ pub async fn add_permission_for_role_db(
         .insert(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
-        .map_err(|_err| AclError::InternalError("Database error".to_string()))?;
+        .map_err(|err| AclError::InternalError(format!("Database error: {err}")))?;
     Ok(())
 }
 
