@@ -11,7 +11,7 @@ use futures_util::future::try_join_all;
 use sea_orm::{
     ActiveModelTrait,
     ActiveValue::{NotSet, Set},
-    EntityTrait, PaginatorTrait, QueryOrder, TransactionTrait, TryInsertResult,
+    DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder, TransactionTrait, TryInsertResult,
 };
 use serde::{Deserialize, Serialize};
 
@@ -98,7 +98,21 @@ pub async fn create_library_with_tags_and_paths(
     LibraryError,
 > {
     let db = get_db_connection().await;
+    create_library_with_tags_and_paths_db(&db, payload, uid).await
+}
 
+pub async fn create_library_with_tags_and_paths_db(
+    db: &DatabaseConnection,
+    payload: Arc<LibraryAddRequest>,
+    uid: u64,
+) -> Result<
+    (
+        libraries::Model,
+        Vec<libraries_related_tags::Model>,
+        Vec<library_paths::Model>,
+    ),
+    LibraryError,
+> {
     let overlapping_paths = find_overlapping_paths(&payload.library_paths)?;
     if !overlapping_paths.is_empty() {
         let overlapping_paths = overlapping_paths.join(",");
@@ -189,8 +203,12 @@ pub async fn create_library_with_tags_and_paths(
 /// delete library
 pub async fn delete_library(lid: u64) -> Result<(), LibraryError> {
     let db = get_db_connection().await;
+    delete_library_db(&db, lid).await
+}
+
+pub async fn delete_library_db(db: &DatabaseConnection, lid: u64) -> Result<(), LibraryError> {
     libraries::Entity::delete_by_id(lid)
-        .exec(db.as_ref())
+        .exec(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|err| {
@@ -204,6 +222,14 @@ pub async fn add_tags_for_library(
     tags: Vec<u64>,
 ) -> Result<Vec<libraries_related_tags::Model>, LibraryError> {
     let db = get_db_connection().await;
+    add_tags_for_library_db(&db, lid, tags).await
+}
+
+pub async fn add_tags_for_library_db(
+    db: &DatabaseConnection,
+    lid: u64,
+    tags: Vec<u64>,
+) -> Result<Vec<libraries_related_tags::Model>, LibraryError> {
     let add_tag_futures: Vec<_> = tags
         .iter()
         .map(|x| async {
@@ -213,7 +239,7 @@ pub async fn add_tags_for_library(
                 ..Default::default()
             };
             library_tag_relation
-                .insert(db.as_ref())
+                .insert(db)
                 .await
                 .inspect_err(|err| log::error!("{err}"))
         })
@@ -227,8 +253,15 @@ pub async fn add_tags_for_library(
 
 pub async fn get_library(lid: u64) -> Result<libraries::Model, LibraryError> {
     let db = get_db_connection().await;
+    get_library_db(&db, lid).await
+}
+
+pub async fn get_library_db(
+    db: &DatabaseConnection,
+    lid: u64,
+) -> Result<libraries::Model, LibraryError> {
     let library = libraries::Entity::find_by_id(lid)
-        .one(db.as_ref())
+        .one(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|err| LibraryError::InternalError(format!("Get library {lid} failed: {err}")))?;
@@ -243,6 +276,13 @@ pub async fn query_libraries(
     params: LibraryQueryRequest,
 ) -> Result<(Vec<libraries::Model>, Pagination), LibraryError> {
     let db = get_db_connection().await;
+    query_libraries_db(&db, params).await
+}
+
+pub async fn query_libraries_db(
+    db: &DatabaseConnection,
+    params: LibraryQueryRequest,
+) -> Result<(Vec<libraries::Model>, Pagination), LibraryError> {
     let mut select = libraries::Entity::find();
     let mut page = 0;
 
@@ -256,7 +296,7 @@ pub async fn query_libraries(
         select = select.order_by(column, sea_orm::Order::Asc);
     };
 
-    let paginator = select.paginate(db.as_ref(), params.page_size);
+    let paginator = select.paginate(db, params.page_size);
     let total = paginator
         .num_items()
         .await
@@ -314,8 +354,12 @@ fn find_overlapping_paths(paths: &[String]) -> Result<Vec<String>, LibraryError>
 
 pub async fn get_all_type() -> Result<Vec<Type>, LibraryError> {
     let db = get_db_connection().await;
+    get_all_type_db(&db).await
+}
+
+pub async fn get_all_type_db(db: &DatabaseConnection) -> Result<Vec<Type>, LibraryError> {
     types::Entity::find()
-        .all(db.as_ref())
+        .all(db)
         .await
         .map_err(|err| LibraryError::InternalError(format!("Get all types failed: {err}")))
 }
@@ -323,7 +367,13 @@ pub async fn get_all_type() -> Result<Vec<Type>, LibraryError> {
 /// Insert media types into the `types` table, skipping duplicates.
 pub async fn add_media_types(media_types: Vec<String>) -> Result<(), LibraryError> {
     let db = get_db_connection().await;
+    add_media_types_db(&db, media_types).await
+}
 
+pub async fn add_media_types_db(
+    db: &DatabaseConnection,
+    media_types: Vec<String>,
+) -> Result<(), LibraryError> {
     let models = media_types.iter().map(|ty| types::ActiveModel {
         label: Set(ty.clone()),
         ..Default::default()
@@ -331,7 +381,7 @@ pub async fn add_media_types(media_types: Vec<String>) -> Result<(), LibraryErro
 
     let result = types::Entity::insert_many(models)
         .on_conflict_do_nothing()
-        .exec(db.as_ref())
+        .exec(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|err| LibraryError::InternalError(format!("Insert media types failed: {err}")))?;
@@ -354,6 +404,14 @@ pub async fn add_media_types(media_types: Vec<String>) -> Result<(), LibraryErro
 
 pub async fn modify_library(lid: u64, payload: ModifyLibraryRequest) -> Result<(), LibraryError> {
     let db = get_db_connection().await;
+    modify_library_db(&db, lid, payload).await
+}
+
+pub async fn modify_library_db(
+    db: &DatabaseConnection,
+    lid: u64,
+    payload: ModifyLibraryRequest,
+) -> Result<(), LibraryError> {
     let current_datetime = Utc::now().naive_utc();
 
     let name = match payload.name {
@@ -375,7 +433,7 @@ pub async fn modify_library(lid: u64, payload: ModifyLibraryRequest) -> Result<(
     };
 
     libraries::Entity::update(library)
-        .exec(db.as_ref())
+        .exec(db)
         .await
         .map_err(|err| {
             LibraryError::InternalError(format!("Modify library {lid} failed: {err}"))

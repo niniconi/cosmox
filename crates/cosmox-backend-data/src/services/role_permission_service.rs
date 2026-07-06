@@ -1,7 +1,7 @@
 use cosmox_macros::page_helper;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, JoinType, QueryFilter,
-    QuerySelect, RelationTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, JoinType,
+    QueryFilter, QuerySelect, RelationTrait,
 };
 use serde::{Deserialize, Serialize};
 
@@ -92,12 +92,16 @@ pub struct AclQueryRequest {}
 
 pub async fn add_role(role: RoleAddRequest) -> Result<(), AclError> {
     let db = get_db_connection().await;
+    add_role_db(&db, role).await
+}
+
+pub async fn add_role_db(db: &DatabaseConnection, role: RoleAddRequest) -> Result<(), AclError> {
     let role = roles::ActiveModel {
         name: Set(role.name),
         ..Default::default()
     };
 
-    role.insert(db.as_ref())
+    role.insert(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|_err| AclError::InternalError("Database error".to_string()))?;
@@ -107,8 +111,12 @@ pub async fn add_role(role: RoleAddRequest) -> Result<(), AclError> {
 
 pub async fn delete_role(rid: u64) -> Result<(), AclError> {
     let db = get_db_connection().await;
+    delete_role_db(&db, rid).await
+}
+
+pub async fn delete_role_db(db: &DatabaseConnection, rid: u64) -> Result<(), AclError> {
     roles::Entity::delete_by_id(rid)
-        .exec(db.as_ref())
+        .exec(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|_err| AclError::InternalError("Database error".to_string()))?;
@@ -117,8 +125,12 @@ pub async fn delete_role(rid: u64) -> Result<(), AclError> {
 
 pub async fn get_role(rid: u64) -> Result<roles::Model, AclError> {
     let db = get_db_connection().await;
+    get_role_db(&db, rid).await
+}
+
+pub async fn get_role_db(db: &DatabaseConnection, rid: u64) -> Result<roles::Model, AclError> {
     let role = roles::Entity::find_by_id(rid)
-        .one(db.as_ref())
+        .one(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|_err| AclError::InternalError("Database error".to_string()))?;
@@ -131,6 +143,13 @@ pub async fn get_role(rid: u64) -> Result<roles::Model, AclError> {
 
 pub async fn get_roles_by_user(uid: u64) -> Result<Vec<roles::Model>, AclError> {
     let db = get_db_connection().await;
+    get_roles_by_user_db(&db, uid).await
+}
+
+pub async fn get_roles_by_user_db(
+    db: &DatabaseConnection,
+    uid: u64,
+) -> Result<Vec<roles::Model>, AclError> {
     let select = roles::Entity::find()
         .join(
             JoinType::InnerJoin,
@@ -138,7 +157,7 @@ pub async fn get_roles_by_user(uid: u64) -> Result<Vec<roles::Model>, AclError> 
         )
         .filter(users_related_roles::Column::Uid.eq(uid));
 
-    match select.all(db.as_ref()).await {
+    match select.all(db).await {
         Ok(roles) => Ok(roles),
         Err(err) => {
             log::error!("Failed to query roles for user {uid}: {err}");
@@ -149,6 +168,13 @@ pub async fn get_roles_by_user(uid: u64) -> Result<Vec<roles::Model>, AclError> 
 
 pub async fn add_permission(permission: PermissionAddRequest) -> Result<(), AclError> {
     let db = get_db_connection().await;
+    add_permission_db(&db, permission).await
+}
+
+pub async fn add_permission_db(
+    db: &DatabaseConnection,
+    permission: PermissionAddRequest,
+) -> Result<(), AclError> {
     let permission = permissions::ActiveModel {
         name: Set(permission.name),
         description: Set(permission.description),
@@ -156,7 +182,7 @@ pub async fn add_permission(permission: PermissionAddRequest) -> Result<(), AclE
     };
 
     permission
-        .insert(db.as_ref())
+        .insert(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|_err| AclError::InternalError("Database error".to_string()))?;
@@ -165,8 +191,12 @@ pub async fn add_permission(permission: PermissionAddRequest) -> Result<(), AclE
 
 pub async fn delete_permission(pid: u64) -> Result<(), AclError> {
     let db = get_db_connection().await;
+    delete_permission_db(&db, pid).await
+}
+
+pub async fn delete_permission_db(db: &DatabaseConnection, pid: u64) -> Result<(), AclError> {
     permissions::Entity::delete_by_id(pid)
-        .exec(db.as_ref())
+        .exec(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|_err| AclError::InternalError("Database error".to_string()))?;
@@ -175,8 +205,15 @@ pub async fn delete_permission(pid: u64) -> Result<(), AclError> {
 
 pub async fn get_permission(pid: u64) -> Result<permissions::Model, AclError> {
     let db = get_db_connection().await;
+    get_permission_db(&db, pid).await
+}
+
+pub async fn get_permission_db(
+    db: &DatabaseConnection,
+    pid: u64,
+) -> Result<permissions::Model, AclError> {
     let permission = permissions::Entity::find_by_id(pid)
-        .one(db.as_ref())
+        .one(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|_err| AclError::InternalError("Database error".to_string()))?;
@@ -189,6 +226,13 @@ pub async fn get_permission(pid: u64) -> Result<permissions::Model, AclError> {
 
 pub async fn get_permissions_by_role(rid: u64) -> Result<Vec<permissions::Model>, AclError> {
     let db = get_db_connection().await;
+    get_permissions_by_role_db(&db, rid).await
+}
+
+pub async fn get_permissions_by_role_db(
+    db: &DatabaseConnection,
+    rid: u64,
+) -> Result<Vec<permissions::Model>, AclError> {
     let select = permissions::Entity::find()
         .join(
             JoinType::InnerJoin,
@@ -197,7 +241,7 @@ pub async fn get_permissions_by_role(rid: u64) -> Result<Vec<permissions::Model>
         .filter(roles_related_permissions::Column::Rid.eq(rid));
 
     select
-        .all(db.as_ref())
+        .all(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|_err| AclError::InternalError("Database error".to_string()))
@@ -205,6 +249,13 @@ pub async fn get_permissions_by_role(rid: u64) -> Result<Vec<permissions::Model>
 
 pub async fn get_permissions_by_user(uid: u64) -> Result<Vec<permissions::Model>, AclError> {
     let db = get_db_connection().await;
+    get_permissions_by_user_db(&db, uid).await
+}
+
+pub async fn get_permissions_by_user_db(
+    db: &DatabaseConnection,
+    uid: u64,
+) -> Result<Vec<permissions::Model>, AclError> {
     let select = permissions::Entity::find()
         .join(
             JoinType::InnerJoin,
@@ -220,7 +271,7 @@ pub async fn get_permissions_by_user(uid: u64) -> Result<Vec<permissions::Model>
         )
         .filter(users_related_roles::Column::Uid.eq(uid));
     select
-        .all(db.as_ref())
+        .all(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|_err| AclError::InternalError("Database error".to_string()))
@@ -228,13 +279,21 @@ pub async fn get_permissions_by_user(uid: u64) -> Result<Vec<permissions::Model>
 
 pub async fn add_permission_for_role(pid: u64, rid: u64) -> Result<(), AclError> {
     let db = get_db_connection().await;
+    add_permission_for_role_db(&db, pid, rid).await
+}
+
+pub async fn add_permission_for_role_db(
+    db: &DatabaseConnection,
+    pid: u64,
+    rid: u64,
+) -> Result<(), AclError> {
     let role_permission_relation = roles_related_permissions::ActiveModel {
         rid: Set(rid),
         pid: Set(pid),
         ..Default::default()
     };
     role_permission_relation
-        .insert(db.as_ref())
+        .insert(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|_err| AclError::InternalError("Database error".to_string()))?;
@@ -243,13 +302,21 @@ pub async fn add_permission_for_role(pid: u64, rid: u64) -> Result<(), AclError>
 
 pub async fn add_role_for_user(rid: u64, uid: u64) -> Result<(), AclError> {
     let db = get_db_connection().await;
+    add_role_for_user_db(&db, rid, uid).await
+}
+
+pub async fn add_role_for_user_db(
+    db: &DatabaseConnection,
+    rid: u64,
+    uid: u64,
+) -> Result<(), AclError> {
     let user_role_relation = users_related_roles::ActiveModel {
         uid: Set(uid),
         rid: Set(rid),
         ..Default::default()
     };
     user_role_relation
-        .insert(db.as_ref())
+        .insert(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|_err| AclError::InternalError("Database error".to_string()))?;
@@ -258,8 +325,12 @@ pub async fn add_role_for_user(rid: u64, uid: u64) -> Result<(), AclError> {
 
 pub async fn query_role() -> Result<Vec<roles::Model>, AclError> {
     let db = get_db_connection().await;
+    query_role_db(&db).await
+}
+
+pub async fn query_role_db(db: &DatabaseConnection) -> Result<Vec<roles::Model>, AclError> {
     roles::Entity::find()
-        .all(db.as_ref())
+        .all(db)
         .await
         .inspect_err(|err| log::error!("Failed to query roles: {err}"))
         .map_err(|_err| AclError::InternalError("Database error".to_string()))
@@ -267,8 +338,14 @@ pub async fn query_role() -> Result<Vec<roles::Model>, AclError> {
 
 pub async fn query_permission() -> Result<Vec<permissions::Model>, AclError> {
     let db = get_db_connection().await;
+    query_permission_db(&db).await
+}
+
+pub async fn query_permission_db(
+    db: &DatabaseConnection,
+) -> Result<Vec<permissions::Model>, AclError> {
     permissions::Entity::find()
-        .all(db.as_ref())
+        .all(db)
         .await
         .inspect_err(|err| log::error!("Failed to query permissions: {err}"))
         .map_err(|_err| AclError::InternalError("Database error".to_string()))

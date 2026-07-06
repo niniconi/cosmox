@@ -5,7 +5,7 @@ use common::fs::FileCleanupGuard;
 use common::security::check_new_path_safe;
 use cosmox_configuration::Configuration;
 use futures_util::StreamExt;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
 use serde::Serialize;
 use tokio::{
     fs::File,
@@ -95,6 +95,14 @@ fn get_default_items_dir() -> Result<PathBuf, FileError> {
 }
 
 async fn store_path_mapping<P: AsRef<Path>>(path: P) -> Result<u64, FileError> {
+    let db = get_db_connection().await;
+    store_path_mapping_db(&db, path).await
+}
+
+async fn store_path_mapping_db<P: AsRef<Path>>(
+    db: &DatabaseConnection,
+    path: P,
+) -> Result<u64, FileError> {
     let path = path.as_ref();
     let canonical_path = path
         .canonicalize()
@@ -111,7 +119,7 @@ async fn store_path_mapping<P: AsRef<Path>>(path: P) -> Result<u64, FileError> {
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|_err| FileError::InternalError(format!("Parse url error path: {path:?}")))?;
 
-    let pmid = push_item_link(url)
+    let pmid = push_item_link_db(db, url)
         .await
         .map_err(|err| FileError::InternalError(err.to_string()))?;
 
@@ -168,8 +176,15 @@ async fn http_file_handler(url: &Url, id: u64) -> Result<PathBuf, FileError> {
 /// pull item from server by `NamedFile`
 pub async fn pull_item_by_named_file(id: u64) -> Result<PathBuf, FileError> {
     let db = get_db_connection().await;
+    pull_item_by_named_file_db(&db, id).await
+}
+
+pub async fn pull_item_by_named_file_db(
+    db: &DatabaseConnection,
+    id: u64,
+) -> Result<PathBuf, FileError> {
     let path_mapping = path_mappings::Entity::find_by_id(id)
-        .one(db.as_ref())
+        .one(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|err| {
@@ -203,13 +218,17 @@ pub async fn pull_item_by_named_file(id: u64) -> Result<PathBuf, FileError> {
 
 pub async fn push_item_link(link: Url) -> Result<u64, anyhow::Error> {
     let db = get_db_connection().await;
+    push_item_link_db(&db, link).await
+}
+
+pub async fn push_item_link_db(db: &DatabaseConnection, link: Url) -> Result<u64, anyhow::Error> {
     let path_mapping = path_mappings::ActiveModel {
         path: Set(link.to_string()),
         mime_type: Set("external".to_string()),
         ..Default::default()
     };
     let path_mapping = path_mapping
-        .insert(db.as_ref())
+        .insert(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|err| FileError::InternalError(format!("Insert path mapping failed: {err}")))?;
@@ -340,6 +359,20 @@ where
 }
 
 pub async fn push_item_octet_stream_with_path<S, E, P>(
+    payload: S,
+    path: P,
+) -> Result<PushResponse, FileError>
+where
+    S: StreamExt<Item = Result<Bytes, E>> + Unpin,
+    E: std::fmt::Display,
+    P: AsRef<Path>,
+{
+    let db = get_db_connection().await;
+    push_item_octet_stream_with_path_db(&db, payload, path).await
+}
+
+pub async fn push_item_octet_stream_with_path_db<S, E, P>(
+    db: &DatabaseConnection,
     mut payload: S,
     path: P,
 ) -> Result<PushResponse, FileError>
@@ -379,7 +412,7 @@ where
             })?;
     }
 
-    let pmid = store_path_mapping(&path).await?;
+    let pmid = store_path_mapping_db(db, &path).await?;
     guard.disarm();
 
     Ok(PushResponse {

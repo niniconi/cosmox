@@ -8,8 +8,8 @@ use cosmox_configuration::Configuration;
 use cosmox_macros::page_helper;
 use futures_util::StreamExt;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, SqlErr, Value, sea_query::expr::Expr,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, SqlErr, Value, sea_query::expr::Expr,
 };
 use serde::{Deserialize, Serialize};
 use validator::{Validate, ValidationError, ValidationErrorsKind};
@@ -231,8 +231,12 @@ pub fn validate_userident(ident: &UserLoginIdent) -> Result<(), ValidationError>
 
 pub async fn get_user(uid: u64) -> Result<users::Model, UserError> {
     let db = get_db_connection().await;
+    get_user_db(&db, uid).await
+}
+
+pub async fn get_user_db(db: &DatabaseConnection, uid: u64) -> Result<users::Model, UserError> {
     let user = users::Entity::find_by_id(uid)
-        .one(db.as_ref())
+        .one(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|err| UserError::InternalError(format!("Get user {uid} failed: {err}")))?;
@@ -245,13 +249,19 @@ pub async fn get_user(uid: u64) -> Result<users::Model, UserError> {
 }
 
 pub async fn sign_up(body: Arc<UserSignUpRequest>) -> Result<UserResp, UserError> {
+    let db = get_db_connection().await;
+    sign_up_db(&db, body).await
+}
+
+pub async fn sign_up_db(
+    db: &DatabaseConnection,
+    body: Arc<UserSignUpRequest>,
+) -> Result<UserResp, UserError> {
     if let Err(err) = body.validate() {
         return Err(UserError::Validation(err.errors().clone()));
     } else if body.confirm_password != body.password {
         return Err(UserError::ConfirmationPasswordMismatch);
     }
-
-    let db = get_db_connection().await;
     log::debug!("sign up user {body:#?}");
     let hash_password = auth::hash_password(&body.password).unwrap();
     log::debug!("generate password hash {hash_password}");
@@ -266,7 +276,7 @@ pub async fn sign_up(body: Arc<UserSignUpRequest>) -> Result<UserResp, UserError
         ..Default::default()
     };
 
-    match user.insert(db.as_ref()).await {
+    match user.insert(db).await {
         Ok(user) => Ok(UserResp {
             uid: user.uid,
             username: user.username,
@@ -293,13 +303,19 @@ pub async fn login(payload: Arc<UserLoginRequest>) -> Result<String, UserError> 
     if let Err(err) = payload.validate() {
         return Err(UserError::Validation(err.errors().clone()));
     }
-
     let db = get_db_connection().await;
+    login_db(&db, payload).await
+}
+
+pub async fn login_db(
+    db: &DatabaseConnection,
+    payload: Arc<UserLoginRequest>,
+) -> Result<String, UserError> {
     log::info!("user {} attempt login", payload.ident);
     let user = match &payload.ident {
         UserLoginIdent::Username(username) => users::Entity::find()
             .filter(users::Column::Username.eq(username))
-            .all(db.as_ref())
+            .all(db)
             .await
             .inspect_err(|err| log::error!("{err}"))
             .map_err(|err| {
@@ -307,7 +323,7 @@ pub async fn login(payload: Arc<UserLoginRequest>) -> Result<String, UserError> 
             })?,
         UserLoginIdent::Email(email) => users::Entity::find()
             .filter(users::Column::Email.eq(email))
-            .all(db.as_ref())
+            .all(db)
             .await
             .inspect_err(|err| log::error!("{err}"))
             .map_err(|err| {
@@ -338,8 +354,12 @@ pub async fn login(payload: Arc<UserLoginRequest>) -> Result<String, UserError> 
 
 pub async fn delete(uid: u64) -> Result<(), UserError> {
     let db = get_db_connection().await;
+    delete_db(&db, uid).await
+}
+
+pub async fn delete_db(db: &DatabaseConnection, uid: u64) -> Result<(), UserError> {
     users::Entity::delete_by_id(uid)
-        .exec(db.as_ref())
+        .exec(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map(|_| ())
@@ -350,6 +370,13 @@ pub async fn query(
     params: Arc<UserQueryRequest>,
 ) -> Result<(Vec<users::Model>, Pagination), UserError> {
     let db = get_db_connection().await;
+    query_db(&db, params).await
+}
+
+pub async fn query_db(
+    db: &DatabaseConnection,
+    params: Arc<UserQueryRequest>,
+) -> Result<(Vec<users::Model>, Pagination), UserError> {
     let mut select = users::Entity::find();
     let mut page = 0;
 
@@ -367,7 +394,7 @@ pub async fn query(
         select = select.order_by(column, sea_orm::Order::Asc);
     };
 
-    let paginator = select.paginate(db.as_ref(), params.page_size);
+    let paginator = select.paginate(db, params.page_size);
     let result = paginator
         .fetch_page(page)
         .await

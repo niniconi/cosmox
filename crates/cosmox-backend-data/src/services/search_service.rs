@@ -4,8 +4,8 @@ use chrono::NaiveDateTime;
 use common::message::Pagination;
 use cosmox_macros::page_helper;
 use sea_orm::{
-    ColumnTrait, Condition, EntityTrait, JoinType, PaginatorTrait, QueryFilter, QueryOrder,
-    QuerySelect, RelationTrait,
+    ColumnTrait, Condition, DatabaseConnection, EntityTrait, JoinType, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, RelationTrait,
 };
 use serde::Deserialize;
 
@@ -41,6 +41,13 @@ pub async fn search(
     params: SearchRequest,
 ) -> Result<(Vec<resources::Model>, Pagination), SearchError> {
     let db = get_db_connection().await;
+    search_db(&db, params).await
+}
+
+pub async fn search_db(
+    db: &DatabaseConnection,
+    params: SearchRequest,
+) -> Result<(Vec<resources::Model>, Pagination), SearchError> {
     let mut select_resource = resources::Entity::find();
     let mut page = 0;
     let search_fmt = format!("%{}%", params.keyword);
@@ -96,7 +103,7 @@ pub async fn search(
     let paginator = select_resource
         .filter(cond)
         .distinct()
-        .paginate(db.as_ref(), params.page_size);
+        .paginate(db, params.page_size);
 
     let total = paginator
         .num_items()

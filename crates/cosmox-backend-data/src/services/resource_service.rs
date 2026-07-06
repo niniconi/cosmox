@@ -83,8 +83,15 @@ pub struct ResourceAddTagRequest {
 /// query resource from database
 pub async fn get_resource(rid: u64) -> Result<resources::Model, ResourceError> {
     let db = get_db_connection().await;
+    get_resource_db(&db, rid).await
+}
+
+pub async fn get_resource_db(
+    db: &DatabaseConnection,
+    rid: u64,
+) -> Result<resources::Model, ResourceError> {
     let resource = resources::Entity::find_by_id(rid)
-        .one(db.as_ref())
+        .one(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|err| {
@@ -101,6 +108,13 @@ pub async fn get_resource(rid: u64) -> Result<resources::Model, ResourceError> {
 
 pub async fn add_resource(payload: ResourceAddRequest) -> Result<u64, ResourceError> {
     let db = get_db_connection().await;
+    add_resource_db(&db, payload).await
+}
+
+pub async fn add_resource_db(
+    db: &DatabaseConnection,
+    payload: ResourceAddRequest,
+) -> Result<u64, ResourceError> {
     let current_datetime = Utc::now().naive_utc();
     let resource = resources::ActiveModel {
         name: Set(Some(payload.name.clone())),
@@ -112,7 +126,7 @@ pub async fn add_resource(payload: ResourceAddRequest) -> Result<u64, ResourceEr
         ..Default::default()
     };
     let resource = resource
-        .insert(db.as_ref())
+        .insert(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|err| {
@@ -156,8 +170,12 @@ pub async fn add_resource_by_metadata(
 /// delete resource from database
 pub async fn delete_resource(rid: u64) -> Result<(), ResourceError> {
     let db = get_db_connection().await;
+    delete_resource_db(&db, rid).await
+}
+
+pub async fn delete_resource_db(db: &DatabaseConnection, rid: u64) -> Result<(), ResourceError> {
     resources::Entity::delete_by_id(rid)
-        .exec(db.as_ref())
+        .exec(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|err| {
@@ -172,8 +190,15 @@ pub async fn add_tags_for_resource(
     tags: Vec<u64>,
 ) -> Result<Vec<resources_related_tags::Model>, ResourceError> {
     let db = get_db_connection().await;
+    add_tags_for_resource_db(&db, rid, tags).await
+}
+
+pub async fn add_tags_for_resource_db(
+    db: &DatabaseConnection,
+    rid: u64,
+    tags: Vec<u64>,
+) -> Result<Vec<resources_related_tags::Model>, ResourceError> {
     let result = db
-        .clone()
         .transaction::<_, Vec<resources_related_tags::Model>, ResourceError>(|txn| {
             Box::pin(async move {
                 let resource_tag_relations = tags
@@ -214,6 +239,13 @@ pub async fn query_resources(
     params: ResourceQueryRequest,
 ) -> Result<(Vec<resources::Model>, Pagination), ResourceError> {
     let db = get_db_connection().await;
+    query_resources_db(&db, params).await
+}
+
+pub async fn query_resources_db(
+    db: &DatabaseConnection,
+    params: ResourceQueryRequest,
+) -> Result<(Vec<resources::Model>, Pagination), ResourceError> {
     let mut select = resources::Entity::find().filter(resources::Column::Lid.eq(params.lid));
     let mut page = 0;
 
@@ -249,7 +281,7 @@ pub async fn query_resources(
         select = select.order_by(column, sea_orm::Order::Asc);
     };
 
-    let paginator = select.paginate(db.as_ref(), params.page_size);
+    let paginator = select.paginate(db, params.page_size);
     let total = paginator
         .num_items()
         .await

@@ -4,8 +4,8 @@ use chrono::Utc;
 use common::message::Pagination;
 use cosmox_macros::page_helper;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, ModelTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, SqlErr,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, SqlErr,
 };
 use serde::{Deserialize, Serialize};
 
@@ -82,13 +82,17 @@ pub struct TagCatalogEntry {
 
 pub async fn add_tag_group(label: String) -> Result<u64, TagError> {
     let db = get_db_connection().await;
+    add_tag_group_db(&db, label).await
+}
+
+pub async fn add_tag_group_db(db: &DatabaseConnection, label: String) -> Result<u64, TagError> {
     let current_navie_datetime = Utc::now().naive_utc();
     let tag_group = tag_groups::ActiveModel {
         text: Set(label.clone()),
         create_datetime: Set(current_navie_datetime),
         ..Default::default()
     };
-    let tag_group = tag_group.insert(db.as_ref()).await.map_err(|err| {
+    let tag_group = tag_group.insert(db).await.map_err(|err| {
         if let Some(sql_err) = err.sql_err()
             && let SqlErr::UniqueConstraintViolation(_) = sql_err
         // TODO check field
@@ -106,8 +110,12 @@ pub async fn add_tag_group(label: String) -> Result<u64, TagError> {
 
 pub async fn get_tag_group(tgid: u64) -> Result<TagGroups, TagError> {
     let db = get_db_connection().await;
+    get_tag_group_db(&db, tgid).await
+}
+
+pub async fn get_tag_group_db(db: &DatabaseConnection, tgid: u64) -> Result<TagGroups, TagError> {
     let tag_group = tag_groups::Entity::find_by_id(tgid)
-        .one(db.as_ref())
+        .one(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|err| {
@@ -123,9 +131,16 @@ pub async fn get_tag_group(tgid: u64) -> Result<TagGroups, TagError> {
 
 pub async fn get_tag_group_by_label(label: String) -> Result<Option<TagGroups>, TagError> {
     let db = get_db_connection().await;
+    get_tag_group_by_label_db(&db, label).await
+}
+
+pub async fn get_tag_group_by_label_db(
+    db: &DatabaseConnection,
+    label: String,
+) -> Result<Option<TagGroups>, TagError> {
     let tag_group = tag_groups::Entity::find()
         .filter(tag_groups::Column::Text.eq(label.clone()))
-        .one(db.as_ref())
+        .one(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|err| {
@@ -138,8 +153,12 @@ pub async fn get_tag_group_by_label(label: String) -> Result<Option<TagGroups>, 
 
 pub async fn get_tag(tid: u64) -> Result<Tag, TagError> {
     let db = get_db_connection().await;
+    get_tag_db(&db, tid).await
+}
+
+pub async fn get_tag_db(db: &DatabaseConnection, tid: u64) -> Result<Tag, TagError> {
     let tag = tags::Entity::find_by_id(tid)
-        .one(db.as_ref())
+        .one(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|err| {
@@ -153,9 +172,16 @@ pub async fn get_tag(tid: u64) -> Result<Tag, TagError> {
 
 pub async fn get_tag_by_label(label: String) -> Result<Option<Tag>, TagError> {
     let db = get_db_connection().await;
+    get_tag_by_label_db(&db, label).await
+}
+
+pub async fn get_tag_by_label_db(
+    db: &DatabaseConnection,
+    label: String,
+) -> Result<Option<Tag>, TagError> {
     let tag = tags::Entity::find()
         .filter(tags::Column::Text.eq(label.clone()))
-        .one(db.as_ref())
+        .one(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|err| {
@@ -168,6 +194,14 @@ pub async fn get_tag_by_label(label: String) -> Result<Option<Tag>, TagError> {
 
 pub async fn add_tag(label: String, tgid: u64) -> Result<u64, TagError> {
     let db = get_db_connection().await;
+    add_tag_db(&db, label, tgid).await
+}
+
+pub async fn add_tag_db(
+    db: &DatabaseConnection,
+    label: String,
+    tgid: u64,
+) -> Result<u64, TagError> {
     let current_navie_datetime = Utc::now().naive_utc();
     let tag = tags::ActiveModel {
         text: Set(label.clone()),
@@ -175,7 +209,7 @@ pub async fn add_tag(label: String, tgid: u64) -> Result<u64, TagError> {
         create_datetime: Set(current_navie_datetime),
         ..Default::default()
     };
-    let tag = tag.insert(db.as_ref()).await.map_err(|err| {
+    let tag = tag.insert(db).await.map_err(|err| {
         if let Some(sql_err) = err.sql_err()
             && let SqlErr::UniqueConstraintViolation(_) = sql_err
         // TODO check field
@@ -193,8 +227,12 @@ pub async fn add_tag(label: String, tgid: u64) -> Result<u64, TagError> {
 
 pub async fn delete_tag(tid: u64) -> Result<(), TagError> {
     let db = get_db_connection().await;
+    delete_tag_db(&db, tid).await
+}
+
+pub async fn delete_tag_db(db: &DatabaseConnection, tid: u64) -> Result<(), TagError> {
     let _result = tags::Entity::delete_by_id(tid)
-        .exec(db.as_ref())
+        .exec(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|err| {
@@ -205,8 +243,12 @@ pub async fn delete_tag(tid: u64) -> Result<(), TagError> {
 
 pub async fn delete_tag_group(tgid: u64) -> Result<(), TagError> {
     let db = get_db_connection().await;
+    delete_tag_group_db(&db, tgid).await
+}
+
+pub async fn delete_tag_group_db(db: &DatabaseConnection, tgid: u64) -> Result<(), TagError> {
     tag_groups::Entity::delete_by_id(tgid)
-        .exec(db.as_ref())
+        .exec(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|err| {
@@ -221,6 +263,13 @@ pub async fn query_tag_group(
     params: TagGroupQueryRequest,
 ) -> Result<(Vec<TagGroups>, Pagination), TagError> {
     let db = get_db_connection().await;
+    query_tag_group_db(&db, params).await
+}
+
+pub async fn query_tag_group_db(
+    db: &DatabaseConnection,
+    params: TagGroupQueryRequest,
+) -> Result<(Vec<TagGroups>, Pagination), TagError> {
     let mut select = tag_groups::Entity::find();
     let mut page = 0;
 
@@ -234,7 +283,7 @@ pub async fn query_tag_group(
         select = select.order_by(column, sea_orm::Order::Asc);
     };
 
-    let paginator = select.paginate(db.as_ref(), params.page_size);
+    let paginator = select.paginate(db, params.page_size);
     let total = paginator
         .num_items()
         .await
@@ -257,8 +306,12 @@ pub async fn query_tag_group(
 
 pub async fn query_catalog() -> Result<Vec<TagCatalogEntry>, TagError> {
     let db = get_db_connection().await;
+    query_catalog_db(&db).await
+}
+
+pub async fn query_catalog_db(db: &DatabaseConnection) -> Result<Vec<TagCatalogEntry>, TagError> {
     let groups = tag_groups::Entity::find()
-        .all(db.as_ref())
+        .all(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|err| {
@@ -271,7 +324,7 @@ pub async fn query_catalog() -> Result<Vec<TagCatalogEntry>, TagError> {
     for group in groups {
         let group_tags = group
             .find_related(tags::Entity)
-            .all(db.as_ref())
+            .all(db)
             .await
             .inspect_err(|err| log::error!("{err}"))
             .map_err(|err| {
@@ -290,6 +343,13 @@ pub async fn query_catalog() -> Result<Vec<TagCatalogEntry>, TagError> {
 
 pub async fn query_tag(params: TagQueryRequest) -> Result<(Vec<Tag>, Pagination), TagError> {
     let db = get_db_connection().await;
+    query_tag_db(&db, params).await
+}
+
+pub async fn query_tag_db(
+    db: &DatabaseConnection,
+    params: TagQueryRequest,
+) -> Result<(Vec<Tag>, Pagination), TagError> {
     let mut select = tags::Entity::find();
     let mut page = 0;
 
@@ -303,7 +363,7 @@ pub async fn query_tag(params: TagQueryRequest) -> Result<(Vec<Tag>, Pagination)
         select = select.order_by(column, sea_orm::Order::Asc);
     };
 
-    let paginator = select.paginate(db.as_ref(), params.page_size);
+    let paginator = select.paginate(db, params.page_size);
     let total = paginator
         .num_items()
         .await
