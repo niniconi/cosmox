@@ -25,7 +25,12 @@ impl MigrationTrait for Migration {
                             .unique_key(),
                     )
                     .col(ColumnDef::new(Permissions::Description).string().null())
-                    .col(ColumnDef::new(Permissions::Builtin).boolean().not_null())
+                    .col(
+                        ColumnDef::new(Permissions::Builtin)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
                     .to_owned(),
             )
             .await

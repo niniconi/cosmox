@@ -31,7 +31,8 @@ impl MigrationTrait for Migration {
                     .col(
                         ColumnDef::new(RolesRelatedPermissions::Builtin)
                             .boolean()
-                            .not_null(),
+                            .not_null()
+                            .default(false),
                     )
                     .foreign_key(
                         ForeignKey::create()

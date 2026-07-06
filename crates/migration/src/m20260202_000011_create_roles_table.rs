@@ -20,7 +20,12 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(Roles::Name).string().not_null().unique_key())
                     .col(ColumnDef::new(Roles::Description).string().null())
-                    .col(ColumnDef::new(Roles::Builtin).boolean().not_null())
+                    .col(
+                        ColumnDef::new(Roles::Builtin)
+                            .boolean()
+                            .not_null()
+                            .default(false),
+                    )
                     .to_owned(),
             )
             .await
