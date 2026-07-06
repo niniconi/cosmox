@@ -68,10 +68,10 @@ pub struct ResourceDeleteRequest {
 #[derive(Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 #[rkyv(bytecheck())]
 pub struct ResourceQueryRequest {
-    lid: u64,
-    level: Option<u64>,
-    min_level: Option<u64>,
-    max_level: Option<u64>,
+    pub lid: u64,
+    pub level: Option<u64>,
+    pub min_level: Option<u64>,
+    pub max_level: Option<u64>,
 }
 
 #[derive(Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]

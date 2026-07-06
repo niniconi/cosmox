@@ -45,14 +45,14 @@ pub enum TagError {
 #[derive(Debug, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 #[rkyv(bytecheck())]
 pub struct TagQueryRequest {
-    tid: Option<u64>,
+    pub tid: Option<u64>,
 }
 
 #[page_helper]
 #[derive(Debug, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 #[rkyv(bytecheck())]
 pub struct TagGroupQueryRequest {
-    tgid: Option<u64>,
+    pub tgid: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
