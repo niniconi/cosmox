@@ -1,0 +1,11 @@
+name: cosmox-plugin-example
+version: 0.0.1
+license: GPL
+authors:
+- niniconi <Stump0828Provoking2393Y@gmail.com>
+description: null
+email: null
+permission: null
+url: null
+dependencies: []
+conflicts: null

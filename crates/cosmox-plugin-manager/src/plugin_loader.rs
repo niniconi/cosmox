@@ -1381,7 +1381,7 @@ mod tests {
         let engine = Engine::new(&config).unwrap();
         let mut plugin_loader = PluginLoader::new(engine);
         let lz_plugin = plugin_loader
-            .pre_load_plugin_from_path("test/plugin/cosmox-plugin-example")
+            .pre_load_plugin_from_path("tests/cosmox_plugin_example")
             .unwrap();
 
         assert!(matches!(lz_plugin, LazyLoadPlugin::ExternalPlugin { .. }))
@@ -1394,7 +1394,7 @@ mod tests {
         config.async_support(true);
         let engine = Engine::new(&config).unwrap();
         let mut plugin_loader = PluginLoader::new(engine);
-        let path = "test/plugin/cosmox-plugin-example/wasm/cosmox_plugin_example.wasm";
+        let path = "tests/cosmox_plugin_example/wasm/cosmox_plugin_example.wasm";
         let _wasm_component = plugin_loader.load_wasm(PluginId::new(0), path).unwrap();
     }
 
