@@ -258,7 +258,7 @@ mod tests {
 
     #[test]
     fn generate_metadata_tree_from_cosmox_api_directory() {
-        let metadata = generate_metadata_tree(&["test/data/library1"]).unwrap();
+        let metadata = generate_metadata_tree(&["tests/data/library1"]).unwrap();
         println!("{metadata:#?}");
     }
 
