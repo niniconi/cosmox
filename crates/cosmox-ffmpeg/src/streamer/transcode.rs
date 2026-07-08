@@ -297,14 +297,8 @@ impl Transcoder {
         self.last_log_time = Instant::now();
     }
 
-    /// Transcodes a video file, changing only its resolution while attempting to
-    /// maintain the original encoding format and bitrate.
-    ///
-    /// # Arguments
-    /// - `input_path`: Path to the input video file.
-    /// - `output_path`: Path to the output video file.
-    /// - `target_width`: Target video width.
-    /// - `target_height`: Target video height.
+    /// Transcodes a video file into HLS segments. When `task.use_hardware` is `true`,
+    /// attempts VAAPI hardware acceleration with automatic fallback to software.
     ///
     /// # Returns
     /// - `Ok(())` if transcoding is successful, or `Err(ffmpeg::Error)` otherwise.
