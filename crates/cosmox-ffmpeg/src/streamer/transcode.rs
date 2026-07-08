@@ -11,6 +11,23 @@ pub enum QualityPreset {
     Slower,
 }
 
+/// Hardware acceleration mode.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum HardwareMode {
+    /// Use software encoding/decoding only.
+    Disabled,
+    /// Try hardware acceleration; fall back to software if unavailable.
+    Auto,
+    /// Require hardware acceleration; fail if unavailable.
+    Force,
+}
+
+impl From<bool> for HardwareMode {
+    fn from(v: bool) -> Self {
+        if v { Self::Auto } else { Self::Disabled }
+    }
+}
+
 const DEFAULT_OPTS: &str =
     "preset=medium,hls_time=6,hls_list_size=0,hls_segment_filename=tmp/seg_%d.ts";
 
@@ -34,6 +51,7 @@ pub struct TranscodeTask<'a> {
     /// Whether to copy audio stream directly without re-encoding.
     pub audio_copy: bool,
     /// Whether to enable hardware acceleration.
+    /// When `true`, uses `HardwareMode::Auto` (try GPU, fall back to software).
     pub use_hardware: bool,
 }
 
@@ -93,6 +111,7 @@ impl Transcoder {
         ost_index: usize,
         opts: Dictionary,
         enable_logging: bool,
+        hw_mode: HardwareMode,
     ) -> Result<Self, ffmpeg::Error> {
         // let global_header = octx.format().flags().contains(format::Flags::GLOBAL_HEADER);
         let decoder = ffmpeg::codec::context::Context::from_parameters(ist.parameters())?
@@ -123,7 +142,15 @@ impl Transcoder {
         encoder.set_frame_rate(decoder.frame_rate());
         encoder.set_time_base(ist.time_base());
 
-        Self::init_gpu_decoder(&mut decoder_ctx, &mut encoder_ctx)?;
+        match hw_mode {
+            HardwareMode::Disabled => {}
+            HardwareMode::Auto => {
+                let _ = Self::init_gpu_decoder(&mut decoder_ctx, &mut encoder_ctx);
+            }
+            HardwareMode::Force => {
+                Self::init_gpu_decoder(&mut decoder_ctx, &mut encoder_ctx)?;
+            }
+        }
 
         // if global_header {
         //   encoder.set_flags(codec::Flags::GLOBAL_HEADER);
@@ -151,13 +178,6 @@ impl Transcoder {
         encoder_ctx: &mut ffmpeg::codec::context::Context,
     ) -> Result<(), ffmpeg::Error> {
         unsafe {
-            let raw_dec_ctx = decoder_ctx.as_mut_ptr();
-            let raw_enc_ctx = encoder_ctx.as_mut_ptr();
-
-            (*raw_dec_ctx).get_format = Some(get_hw_format);
-
-            (*raw_enc_ctx).pix_fmt = ffmpeg_sys_next::AVPixelFormat::AV_PIX_FMT_VAAPI;
-
             let device_path = CString::new("/dev/dri/renderD128").unwrap();
             let mut hw_device_ctx: *mut ffmpeg::sys::AVBufferRef = ptr::null_mut();
 
@@ -173,9 +193,18 @@ impl Transcoder {
                 return Err(ffmpeg::Error::from(err));
             }
 
+            // Only modify decoder/encoder contexts after device creation succeeds,
+            // so Auto mode can cleanly fall back to software.
+
+            let raw_dec_ctx = decoder_ctx.as_mut_ptr();
+            let raw_enc_ctx = encoder_ctx.as_mut_ptr();
+
+            (*raw_dec_ctx).get_format = Some(get_hw_format);
+
+            (*raw_enc_ctx).pix_fmt = ffmpeg_sys_next::AVPixelFormat::AV_PIX_FMT_VAAPI;
+
             (*raw_dec_ctx).hw_device_ctx = ffmpeg::sys::av_buffer_ref(hw_device_ctx);
 
-            // Decrease the temp ref-count to avoid memory leaks.
             ffmpeg::sys::av_buffer_unref(&mut hw_device_ctx);
 
             if !(*raw_dec_ctx).hw_frames_ctx.is_null() {
@@ -326,6 +355,7 @@ impl Transcoder {
                         ost_index as _,
                         opts.to_owned(),
                         Some(ist_index) == best_video_stream_index,
+                        HardwareMode::from(task.use_hardware),
                     )
                     .unwrap(),
                 );

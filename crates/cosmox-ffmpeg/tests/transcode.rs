@@ -18,7 +18,7 @@ pub fn test_transcode() {
         output_path: "/tmp/out.m3u8",
         video: None,
         audio_copy: true,
-        use_hardware: true,
+        use_hardware: false,
     })
     .unwrap();
 }
