@@ -294,6 +294,31 @@ pub enum InstallPlugin {
     Data(Vec<u8>),
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PluginQueryRequest {
+    pub name: Option<String>,
+    pub status: Option<String>,
+    #[serde(rename = "plugin_type")]
+    pub plugin_type: Option<String>,
+    #[serde(rename = "sort_by")]
+    pub sort: Option<String>,
+    pub page: Option<u64>,
+    #[serde(default = "default_page_size")]
+    pub page_size: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginQueryItem {
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    pub author: String,
+    pub email: String,
+    pub enabled: bool,
+    pub plugin_type: String,
+    pub error: Option<String>,
+}
+
 // -- Scanner --
 
 #[derive(Debug, Serialize)]

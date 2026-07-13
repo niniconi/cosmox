@@ -4,12 +4,12 @@ use crate::{
     types::{
         InitStatus, InitializeConfig, InstallPlugin, LibrariesRelatedTags, Library, LibraryAdd,
         LibraryDeleteRequest, LibraryModify, LibraryPath, LibraryQueryRequest, LibraryType,
-        Permission, PermissionAddRequest, PushResponse, Resource, ResourceAddRequest,
-        ResourceModifyRequest, ResourceQueryRequest, Role, RoleAddRequest,
-        RoleLinkPermissionAddRequest, ScannerInfo, ScannerStatus, ScannerTaskAddRequest,
-        SearchRequest, SystemInfo, Tag, TagAddRequest, TagCatalogEntry, TagGroup,
-        TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest, TagQueryRequest, User,
-        UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest, UserSignUp,
+        Permission, PermissionAddRequest, PluginQueryItem, PluginQueryRequest, PushResponse,
+        Resource, ResourceAddRequest, ResourceModifyRequest, ResourceQueryRequest, Role,
+        RoleAddRequest, RoleLinkPermissionAddRequest, ScannerInfo, ScannerStatus,
+        ScannerTaskAddRequest, SearchRequest, SystemInfo, Tag, TagAddRequest, TagCatalogEntry,
+        TagGroup, TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest, TagQueryRequest,
+        User, UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest, UserSignUp,
     },
 };
 
@@ -339,6 +339,14 @@ impl Api for IpcApi {
     }
 
     fn plugin_info(&self) -> ApiFuture<'_, String> {
+        Box::pin(async {
+            Err(SdkError::Internal(
+                "IPC transport not implemented yet".into(),
+            ))
+        })
+    }
+
+    fn plugin_query(&self, _params: PluginQueryRequest) -> ApiFuture<'_, Vec<PluginQueryItem>> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "IPC transport not implemented yet".into(),

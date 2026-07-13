@@ -6,12 +6,13 @@ use crate::{
     types::{
         InitStatus, InitializeConfig, InstallPlugin, LibrariesRelatedTags, Library, LibraryAdd,
         LibraryDeleteRequest, LibraryModify, LibraryPath, LibraryQueryRequest, LibraryType,
-        Message, MessagePayload, Permission, PermissionAddRequest, PushResponse, Resource,
-        ResourceAddRequest, ResourceModifyRequest, ResourceQueryRequest, Role, RoleAddRequest,
-        RoleLinkPermissionAddRequest, ScannerInfo, ScannerStatus, ScannerTaskAddRequest,
-        SearchRequest, SystemInfo, Tag, TagAddRequest, TagCatalogEntry, TagGroup,
-        TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest, TagQueryRequest, User,
-        UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest, UserSignUp,
+        Message, MessagePayload, Permission, PermissionAddRequest, PluginQueryItem,
+        PluginQueryRequest, PushResponse, Resource, ResourceAddRequest, ResourceModifyRequest,
+        ResourceQueryRequest, Role, RoleAddRequest, RoleLinkPermissionAddRequest, ScannerInfo,
+        ScannerStatus, ScannerTaskAddRequest, SearchRequest, SystemInfo, Tag, TagAddRequest,
+        TagCatalogEntry, TagGroup, TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest,
+        TagQueryRequest, User, UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest,
+        UserSignUp,
     },
 };
 
@@ -463,6 +464,13 @@ impl Api for HttpApi {
 
     fn plugin_info(&self) -> ApiFuture<'_, String> {
         Box::pin(async move { self.get("/plugin/info").await })
+    }
+
+    fn plugin_query(&self, params: PluginQueryRequest) -> ApiFuture<'_, Vec<PluginQueryItem>> {
+        Box::pin(async move {
+            let qs = build_page_query(&params);
+            self.get(&format!("/plugin/query{qs}")).await
+        })
     }
 
     fn plugin_install(&self, payload: InstallPlugin) -> ApiFuture<'_, String> {

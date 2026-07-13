@@ -6,11 +6,12 @@ type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, SdkError>> + Send 
 use crate::types::{
     InitStatus, InitializeConfig, InstallPlugin, LibrariesRelatedTags, Library, LibraryAdd,
     LibraryDeleteRequest, LibraryModify, LibraryPath, LibraryQueryRequest, LibraryType, Permission,
-    PermissionAddRequest, PushResponse, Resource, ResourceAddRequest, ResourceModifyRequest,
-    ResourceQueryRequest, Role, RoleAddRequest, RoleLinkPermissionAddRequest, ScannerInfo,
-    ScannerStatus, ScannerTaskAddRequest, SearchRequest, SystemInfo, Tag, TagAddRequest,
-    TagCatalogEntry, TagGroup, TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest,
-    TagQueryRequest, User, UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest, UserSignUp,
+    PermissionAddRequest, PluginQueryItem, PluginQueryRequest, PushResponse, Resource,
+    ResourceAddRequest, ResourceModifyRequest, ResourceQueryRequest, Role, RoleAddRequest,
+    RoleLinkPermissionAddRequest, ScannerInfo, ScannerStatus, ScannerTaskAddRequest, SearchRequest,
+    SystemInfo, Tag, TagAddRequest, TagCatalogEntry, TagGroup, TagGroupAddRequest,
+    TagGroupDeleteRequest, TagGroupQueryRequest, TagQueryRequest, User, UserLogin,
+    UserQueryRequest, UserResp, UserRoleAddRequest, UserSignUp,
 };
 
 pub use error::SdkError;
@@ -105,6 +106,7 @@ pub trait Api {
     ) -> ApiFuture<'_, ()>;
 
     fn plugin_info(&self) -> ApiFuture<'_, String>;
+    fn plugin_query(&self, params: PluginQueryRequest) -> ApiFuture<'_, Vec<PluginQueryItem>>;
     fn plugin_install(&self, payload: InstallPlugin) -> ApiFuture<'_, String>;
     fn plugin_uninstall(&self, name: String) -> ApiFuture<'_, ()>;
     fn plugin_enable(&self, name: String) -> ApiFuture<'_, ()>;
