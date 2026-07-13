@@ -72,7 +72,7 @@ impl<T> Metadata<T> {
             }
         }
 
-        fmt_str.push_str(format!("\'{}\'\n", &metadata.name).as_str());
+        fmt_str.push_str(format!("\'{}\'\n", metadata.name).as_str());
 
         let sub_metadatas = &metadata.sub_metadatas;
         if !sub_metadatas.is_empty() {
