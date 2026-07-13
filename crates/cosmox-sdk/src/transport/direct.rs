@@ -325,21 +325,21 @@ impl Api for DirectApi {
             ))
         })
     }
-    fn plugin_uninstall(&self, _id: u64) -> ApiFuture<'_, ()> {
+    fn plugin_uninstall(&self, _name: String) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn plugin_enable(&self, _id: u64) -> ApiFuture<'_, ()> {
+    fn plugin_enable(&self, _name: String) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn plugin_disable(&self, _id: u64) -> ApiFuture<'_, ()> {
+    fn plugin_disable(&self, _name: String) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),

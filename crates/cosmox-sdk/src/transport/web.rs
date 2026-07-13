@@ -477,16 +477,16 @@ impl Api for HttpApi {
         })
     }
 
-    fn plugin_uninstall(&self, _id: u64) -> ApiFuture<'_, ()> {
+    fn plugin_uninstall(&self, _name: String) -> ApiFuture<'_, ()> {
         Box::pin(async move { self.post_path("/plugin/uninstall").await })
     }
 
-    fn plugin_enable(&self, id: u64) -> ApiFuture<'_, ()> {
-        Box::pin(async move { self.post_path(&format!("/plugin/{id}/enable")).await })
+    fn plugin_enable(&self, name: String) -> ApiFuture<'_, ()> {
+        Box::pin(async move { self.post_path(&format!("/plugin/{name}/enable")).await })
     }
 
-    fn plugin_disable(&self, id: u64) -> ApiFuture<'_, ()> {
-        Box::pin(async move { self.post_path(&format!("/plugin/{id}/disable")).await })
+    fn plugin_disable(&self, name: String) -> ApiFuture<'_, ()> {
+        Box::pin(async move { self.post_path(&format!("/plugin/{name}/disable")).await })
     }
 
     fn scanner_scan(&self, lid: u64) -> ApiFuture<'_, String> {

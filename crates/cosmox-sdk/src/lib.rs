@@ -106,9 +106,9 @@ pub trait Api {
 
     fn plugin_info(&self) -> ApiFuture<'_, String>;
     fn plugin_install(&self, payload: InstallPlugin) -> ApiFuture<'_, String>;
-    fn plugin_uninstall(&self, id: u64) -> ApiFuture<'_, ()>;
-    fn plugin_enable(&self, id: u64) -> ApiFuture<'_, ()>;
-    fn plugin_disable(&self, id: u64) -> ApiFuture<'_, ()>;
+    fn plugin_uninstall(&self, name: String) -> ApiFuture<'_, ()>;
+    fn plugin_enable(&self, name: String) -> ApiFuture<'_, ()>;
+    fn plugin_disable(&self, name: String) -> ApiFuture<'_, ()>;
 
     fn scanner_scan(&self, lid: u64) -> ApiFuture<'_, String>;
     fn scanner_scan_all(&self) -> ApiFuture<'_, String>;
