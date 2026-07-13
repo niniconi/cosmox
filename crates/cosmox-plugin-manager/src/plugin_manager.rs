@@ -29,7 +29,7 @@ use crate::{
     plugin_loader::{
         ComponentRunStates, CosmoxPluginData, PluginLoadError, PluginLoader, bindings,
     },
-    types::{PluginName, PluginWasmId, PluginWasmName, WasmComponent},
+    types::{LazyLoadPlugin, PluginName, PluginWasmId, PluginWasmName, WasmComponent},
 };
 
 use wasmtime_wasi::WasiCtxBuilder;
@@ -255,12 +255,23 @@ impl PluginManager {
         let external_lz_plugins = self.plugin_loader.pre_load_external_plugins(plugin_path);
         let builtin_lz_plugins = self.plugin_loader.pre_load_builtin_plugins();
 
-        self.plugin_loader
-            .lazy_load_plugins_list
-            .extend(external_lz_plugins);
-        self.plugin_loader
-            .lazy_load_plugins_list
-            .extend(builtin_lz_plugins);
+        let mut register_names = |new: Vec<LazyLoadPlugin>| {
+            let start = self.plugin_loader.lazy_load_plugins_list.len();
+            for (i, lz) in new.iter().enumerate() {
+                let name = match lz {
+                    LazyLoadPlugin::BuiltinPlugin { name, .. }
+                    | LazyLoadPlugin::ExternalPlugin { name, .. }
+                    | LazyLoadPlugin::InvalidPlugin { name, .. } => name.clone(),
+                };
+                self.plugin_loader
+                    .lazy_load_plugins_names
+                    .insert(name, start + i);
+            }
+            self.plugin_loader.lazy_load_plugins_list.extend(new);
+        };
+
+        register_names(external_lz_plugins);
+        register_names(builtin_lz_plugins);
 
         let _plugins = self.plugin_loader.load_enabled_plugins(enabled_plugins);
     }
