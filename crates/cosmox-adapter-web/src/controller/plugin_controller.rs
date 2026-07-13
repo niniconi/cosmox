@@ -12,6 +12,9 @@ use cosmox_backend_api::{
 };
 use cosmox_macros::actix_web_error;
 
+use cosmox_backend_api::api::plugin::PluginQueryRequest;
+use serde_qs::web::QsQuery;
+
 use crate::into_message;
 
 actix_web_error! {
@@ -69,6 +72,14 @@ pub async fn disable_plugin(
         api::plugin::disable_plugin(&mut ctx.into_inner(), PluginName::new(plugin.into_inner()))
             .await
     )
+}
+
+#[get("/query")]
+pub async fn query_plugins(
+    ctx: web::ReqData<Context<'_>>,
+    params: QsQuery<PluginQueryRequest>,
+) -> impl Responder {
+    into_message!(api::plugin::query(&mut ctx.into_inner(), params.into_inner()).await)
 }
 
 #[get("/info")]

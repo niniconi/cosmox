@@ -100,6 +100,21 @@ pub struct PluginWasmState {
     pub name: PluginWasmName,
 }
 
+/// Item returned by the plugin query API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginQueryItem {
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    pub author: String,
+    pub email: String,
+    pub enabled: bool,
+    /// "builtin" | "external" | "invalid"
+    pub plugin_type: String,
+    /// Error message when the plugin is in invalid state.
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct PluginManager {
     /// wasm runtime engine
@@ -635,6 +650,63 @@ impl PluginManager {
 
     /// Query available UI extensions (placeholder).
     pub fn query_ui_extensions() {}
+
+    /// Query all plugins and return their management info.
+    ///
+    /// Merges the lazy-load discovery list (all plugins found on disk/builtin)
+    /// with the currently enabled (loaded) set to produce a complete picture.
+    pub fn query_plugins() -> Vec<PluginQueryItem> {
+        let pm = Self::get_plugin_manager();
+        let mut items = Vec::with_capacity(pm.plugin_loader.lazy_load_plugins_list.len());
+
+        for lz in &pm.plugin_loader.lazy_load_plugins_list {
+            match lz {
+                LazyLoadPlugin::BuiltinPlugin {
+                    name,
+                    version,
+                    description,
+                } => items.push(PluginQueryItem {
+                    name: name.to_string(),
+                    version: version.to_string(),
+                    description: description.clone(),
+                    author: String::new(),
+                    email: String::new(),
+                    enabled: pm.plugin_loader.plugin_names.contains_key(name),
+                    plugin_type: "builtin".to_string(),
+                    error: None,
+                }),
+                LazyLoadPlugin::ExternalPlugin {
+                    name,
+                    version,
+                    description,
+                    author,
+                    email,
+                    ..
+                } => items.push(PluginQueryItem {
+                    name: name.to_string(),
+                    version: version.to_string(),
+                    description: description.clone(),
+                    author: author.clone(),
+                    email: email.clone(),
+                    enabled: pm.plugin_loader.plugin_names.contains_key(name),
+                    plugin_type: "external".to_string(),
+                    error: None,
+                }),
+                LazyLoadPlugin::InvalidPlugin { name, error } => items.push(PluginQueryItem {
+                    name: name.to_string(),
+                    version: String::new(),
+                    description: String::new(),
+                    author: String::new(),
+                    email: String::new(),
+                    enabled: false,
+                    plugin_type: "invalid".to_string(),
+                    error: Some(error.to_string()),
+                }),
+            }
+        }
+
+        items
+    }
 
     /// Dispatch events to registered handlers (placeholder).
     pub fn event_dispatcher() {}

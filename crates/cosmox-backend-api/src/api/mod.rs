@@ -82,6 +82,7 @@ pub enum Endpoint {
     EnablePlugin,
     DisablePlugin,
     PluginInfo,
+    QueryPlugin,
 
     // Metadata
     GetMetadata {

@@ -141,6 +141,7 @@ pub fn server(
                             .service(plugin_controller::uninstall_plugin)
                             .service(plugin_controller::enable_plugin)
                             .service(plugin_controller::disable_plugin)
+                            .service(plugin_controller::query_plugins)
                             .service(plugin_controller::info),
                     )
                     .service(
