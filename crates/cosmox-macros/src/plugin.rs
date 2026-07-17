@@ -1,9 +1,112 @@
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::{
     Attribute, Ident, ItemMod, Visibility,
     parse::{Parse, ParseStream},
 };
+
+/// Parse helper for `#[on_event(Variant1, Variant2, ...)]` argument list.
+struct EventVariants {
+    variants: Vec<Ident>,
+}
+
+impl Parse for EventVariants {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let mut variants = Vec::new();
+        while !input.is_empty() {
+            let ident: Ident = input.parse()?;
+            variants.push(ident);
+            if !input.is_empty() {
+                let _: syn::Token![,] = input.parse()?;
+            }
+        }
+        Ok(EventVariants { variants })
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+enum OnEventAttr {
+    /// `#[on_event]` — no arguments, receive all events
+    All,
+    /// `#[on_event(Variant1, Variant2, ...)]` — register for specific event variants.
+    /// Each entry carries the `EventVariantInfo` computed at parse time, so the
+    /// generate phase can build the dispatch without re-querying the lookup table.
+    Filtered(Vec<(Ident, EventVariantInfo)>),
+}
+
+/// Describes how a filtered `#[on_event(Variant)]` handler is invoked.
+///
+/// `context` is `Some((variant_pat, handle_idents))` when the host pairs this
+/// event with a `EventContext` variant carrying resource handles. The generated
+/// code only calls the handler after matching that `EventContext` variant and
+/// unpacking its handles. `None` means the event carries no handles, so the
+/// handler is called directly (the `event_context` parameter is ignored). The
+/// strongly-typed business payload (the `D` of `EventPayload<C, D>`) is bound
+/// as `ctx` and forwarded to the handler; its type is inferred from the
+/// `Event` variant, so it need not be stored here.
+#[derive(Debug, Clone)]
+struct EventVariantInfo {
+    context: Option<(TokenStream, Vec<Ident>)>,
+}
+
+// `TokenStream` is not `PartialEq`, so we compare only the handle idents
+// (the `TokenStream` pattern is fully determined by those idents). The lookup
+// table in `event_variant_info` gives every variant a distinct handle-ident
+// set, so two infos compare equal iff the variants share the same handler
+// signature — this is what the single-`#[on_event(...)]` compatibility check
+// relies on. `None` (no handles) equals only `None`.
+impl PartialEq for EventVariantInfo {
+    fn eq(&self, other: &Self) -> bool {
+        match (&self.context, &other.context) {
+            (Some((_, a)), Some((_, b))) => a == b,
+            (None, None) => true,
+            _ => false,
+        }
+    }
+}
+
+/// Maps an `Event` variant name to its dispatch info. Returns `None` for unknown
+/// variants so the macro can emit a compile error (the user referenced a
+/// non-existent event variant).
+fn event_variant_info(variant: &Ident) -> Option<EventVariantInfo> {
+    let p = |s: &str| syn::Ident::new(s, variant.span());
+    let ctx_mod = quote! {
+        cosmox_api::api::bindings::cosmox::plugin::context::EventContext
+    };
+    let no_handles = || EventVariantInfo { context: None };
+    match variant.to_string().as_str() {
+        "OnMetadataRawTreeReady" => Some(EventVariantInfo {
+            context: Some((
+                quote! { #ctx_mod::MetadataReadyContext((ref metadata_handle, ref path_mapping_handle)) },
+                vec![p("metadata_handle"), p("path_mapping_handle")],
+            )),
+        }),
+        "OnMetadataLocalTreeReady" => Some(EventVariantInfo {
+            context: Some((
+                quote! { #ctx_mod::MetadataLocalReadyContext((
+                    ref metadata_handle, ref path_mapping_handle, ref tag_handle
+                )) },
+                vec![
+                    p("metadata_handle"),
+                    p("path_mapping_handle"),
+                    p("tag_handle"),
+                ],
+            )),
+        }),
+        "OnServerError"
+        | "OnScanComplete"
+        | "OnNewFileDiscovered"
+        | "OnUserLogin"
+        | "OnLibraryCrate"
+        | "OnPluginInstall"
+        | "OnPluginUninstall"
+        | "OnPluginEnable"
+        | "OnPluginDisable"
+        | "OnServerStart"
+        | "OnServerStop" => Some(no_handles()),
+        _ => None,
+    }
+}
 
 pub struct PluginAttr {
     media_types: Vec<String>,
@@ -42,14 +145,18 @@ enum AnnotatedFn {
     OnUnload(Ident),
     OnEnable(Ident),
     OnDisable(Ident),
-    OnEvent(Ident),
+    OnEvent(Ident, OnEventAttr),
     OnCommand(Ident),
     OnConfig(Ident),
     Health(Ident),
     MediaTypes(Ident),
 }
 
-fn extract_annotation_name(attrs: &mut Vec<Attribute>) -> Option<String> {
+/// Returns `(annotation_name, attribute_tokens, attribute_span)`.
+/// `attribute_tokens` is the content inside the attribute brackets, e.g. for
+/// `#[on_event(OnScanComplete)]` it returns `("on_event", OnScanComplete, <span>)`.
+/// `attribute_span` covers the full `#[...]` so errors underline the whole attribute.
+fn extract_annotation(attrs: &mut Vec<Attribute>) -> Option<(String, TokenStream, Span)> {
     let attr_names = [
         "on_load",
         "on_unload",
@@ -71,7 +178,13 @@ fn extract_annotation_name(attrs: &mut Vec<Attribute>) -> Option<String> {
     })?;
 
     let attr = attrs.remove(idx);
-    Some(attr.path().segments.last().unwrap().ident.to_string())
+    let span = attr.bracket_token.span.join();
+    let name = attr.path().segments.last().unwrap().ident.to_string();
+    let tokens = match &attr.meta {
+        syn::Meta::List(list) => list.tokens.clone(),
+        _ => TokenStream::new(),
+    };
+    Some((name, tokens, span))
 }
 
 struct ParsedPlugin {
@@ -85,7 +198,11 @@ fn parse_plugin_module(mod_item: &mut ItemMod) -> syn::Result<ParsedPlugin> {
     let mut seen_on_unload = false;
     let mut seen_on_enable = false;
     let mut seen_on_disable = false;
-    let mut seen_on_event = false;
+    let mut seen_on_event_all: Option<String> = None;
+    // Tracks the specific event variants already claimed by a `#[on_event(...)]`
+    // handler, so the same variant registered twice is an error while *different*
+    // variants may each have their own handler.
+    let mut seen_on_event_filtered: Vec<Ident> = Vec::new();
     let mut seen_on_command = false;
     let mut seen_on_config = false;
     let mut seen_health = false;
@@ -94,7 +211,7 @@ fn parse_plugin_module(mod_item: &mut ItemMod) -> syn::Result<ParsedPlugin> {
     if let Some((_, items)) = &mut mod_item.content {
         for item in items.iter_mut() {
             if let syn::Item::Fn(func) = item
-                && let Some(name) = extract_annotation_name(&mut func.attrs)
+                && let Some((name, tokens, attr_span)) = extract_annotation(&mut func.attrs)
             {
                 let fn_name = func.sig.ident.clone();
                 let span = func.sig.ident.span();
@@ -104,7 +221,7 @@ fn parse_plugin_module(mod_item: &mut ItemMod) -> syn::Result<ParsedPlugin> {
                     "on_unload" => Some((&mut seen_on_unload, "`#[on_unload]`")),
                     "on_enable" => Some((&mut seen_on_enable, "`#[on_enable]`")),
                     "on_disable" => Some((&mut seen_on_disable, "`#[on_disable]`")),
-                    "on_event" => Some((&mut seen_on_event, "`#[on_event]`")),
+                    "on_event" => None,
                     "on_command" => Some((&mut seen_on_command, "`#[on_command]`")),
                     "on_config" => Some((&mut seen_on_config, "`#[on_config]`")),
                     "health" => Some((&mut seen_health, "`#[health]`")),
@@ -127,7 +244,86 @@ fn parse_plugin_module(mod_item: &mut ItemMod) -> syn::Result<ParsedPlugin> {
                     "on_unload" => Some(AnnotatedFn::OnUnload(fn_name)),
                     "on_enable" => Some(AnnotatedFn::OnEnable(fn_name)),
                     "on_disable" => Some(AnnotatedFn::OnDisable(fn_name)),
-                    "on_event" => Some(AnnotatedFn::OnEvent(fn_name)),
+                    "on_event" => {
+                        // Parse the optional argument list.
+                        let on_event_attr = if tokens.is_empty() {
+                            OnEventAttr::All
+                        } else {
+                            let variants: EventVariants =
+                                syn::parse2(tokens).map_err(|e| syn::Error::new(attr_span, e))?;
+                            for v in &variants.variants {
+                                if event_variant_info(v).is_none() {
+                                    return Err(syn::Error::new(
+                                        attr_span,
+                                        format_args!(
+                                            "unknown event variant `{v}` in `#[on_event(...)]`; it is not a variant of `cosmox_api::event::Event`",
+                                            v = v,
+                                        ),
+                                    ));
+                                }
+                            }
+                            let filtered: Vec<(Ident, EventVariantInfo)> = variants
+                                .variants
+                                .into_iter()
+                                .map(|v| {
+                                    let info = event_variant_info(&v)
+                                        .expect("variant already validated above");
+                                    (v, info)
+                                })
+                                .collect();
+                            OnEventAttr::Filtered(filtered)
+                        };
+
+                        // Conflict / duplicate detection for #[on_event].
+                        match &on_event_attr {
+                            OnEventAttr::All => {
+                                if !seen_on_event_filtered.is_empty() {
+                                    let listed = seen_on_event_filtered
+                                        .iter()
+                                        .map(|v| v.to_string())
+                                        .collect::<Vec<_>>()
+                                        .join(", ");
+                                    return Err(syn::Error::new(
+                                        attr_span,
+                                        format_args!(
+                                            "cannot combine `#[on_event]` with `#[on_event(...)]`; `#[on_event(...)]` already declares the following variant(s): {listed}",
+                                            listed = listed,
+                                        ),
+                                    ));
+                                }
+                                if let Some(first_fn) = &seen_on_event_all {
+                                    return Err(syn::Error::new(
+                                        attr_span,
+                                        format_args!(
+                                            "duplicate `#[on_event]` annotation (first on `{first_fn}`)",
+                                            first_fn = first_fn,
+                                        ),
+                                    ));
+                                }
+                                seen_on_event_all = Some(fn_name.to_string());
+                            }
+                            OnEventAttr::Filtered(variants) => {
+                                if let Some(first_fn) = &seen_on_event_all {
+                                    return Err(syn::Error::new(
+                                        attr_span,
+                                        format_args!(
+                                            "cannot combine `#[on_event(...)]` with `#[on_event]`; `#[on_event]` is already on `{first_fn}`",
+                                            first_fn = first_fn,
+                                        ),
+                                    ));
+                                }
+                                // The same variant may be handled by multiple
+                                // `#[on_event(...)]` functions, so we do not reject
+                                // duplicates here. Record every variant so the
+                                // All/Filtered mutual-exclusion check above still works.
+                                for (v, _) in variants {
+                                    seen_on_event_filtered.push(v.clone());
+                                }
+                            }
+                        }
+
+                        Some(AnnotatedFn::OnEvent(fn_name, on_event_attr))
+                    }
                     "on_command" => Some(AnnotatedFn::OnCommand(fn_name)),
                     "on_config" => Some(AnnotatedFn::OnConfig(fn_name)),
                     "health" => Some(AnnotatedFn::Health(fn_name)),
@@ -174,10 +370,28 @@ fn generate_plugin(
         AnnotatedFn::OnDisable(n) => Some(n.clone()),
         _ => None,
     });
-    let on_event = parsed.annotated.iter().find_map(|a| match a {
-        AnnotatedFn::OnEvent(n) => Some(n.clone()),
-        _ => None,
-    });
+    // Collect *every* `#[on_event]` / `#[on_event(...)]` handler. A single
+    // event variant may be handled by multiple handlers, so we no longer take
+    // only the first one.
+    let on_events: Vec<(Ident, OnEventAttr)> = parsed
+        .annotated
+        .iter()
+        .filter_map(|a| match a {
+            AnnotatedFn::OnEvent(n, attr) => Some((n.clone(), attr.clone())),
+            _ => None,
+        })
+        .collect();
+    // Convenience views:
+    let on_event_all = on_events
+        .iter()
+        .find(|(_, attr)| matches!(attr, OnEventAttr::All));
+    let on_event_filtered: Vec<(Ident, Vec<(Ident, EventVariantInfo)>)> = on_events
+        .iter()
+        .filter_map(|(n, attr)| match attr {
+            OnEventAttr::Filtered(v) => Some((n.clone(), v.clone())),
+            _ => None,
+        })
+        .collect();
     let on_command = parsed.annotated.iter().find_map(|a| match a {
         AnnotatedFn::OnCommand(n) => Some(n.clone()),
         _ => None,
@@ -226,9 +440,46 @@ fn generate_plugin(
         _ => quote! { ::std::vec::Vec::new() },
     };
 
+    // Build event registration statements for #[on_event(Variant, ...)].
+    // A variant may be declared by multiple handlers, so we register each
+    // distinct variant only once.
+    let registration_stmts = if on_event_filtered.is_empty() {
+        quote! {}
+    } else {
+        let mut seen: Vec<Ident> = Vec::new();
+        let reg_calls: Vec<TokenStream> = on_event_filtered
+            .iter()
+            .flat_map(|(_, variants)| variants)
+            .filter(|(v, _)| {
+                if seen.iter().any(|s| s == v) {
+                    false
+                } else {
+                    seen.push(v.clone());
+                    true
+                }
+            })
+            .map(|(v, _)| {
+                quote! {
+                    cosmox_api::event::Event::#v(
+                        cosmox_api::event::EventPayload::Cond(
+                            ::std::default::Default::default(),
+                        ),
+                    ).register().expect(
+                        concat!("failed to register ", stringify!(#v), " event listener"),
+                    );
+                }
+            })
+            .collect();
+        quote! { #(#reg_calls)* }
+    };
+
     let on_load_body = match on_load {
-        Some(ref fn_name) => quote! { #mod_path::#fn_name(config) },
+        Some(ref fn_name) => quote! {
+            #registration_stmts
+            #mod_path::#fn_name(config)
+        },
         None => quote! {
+            #registration_stmts
             cosmox_api::api::bindings::exports::cosmox::plugin::core_lifecycle::PluginResult::Ok
         },
     };
@@ -254,11 +505,118 @@ fn generate_plugin(
         },
     };
 
-    let on_event_body = match on_event {
-        Some(ref fn_name) => quote! { #mod_path::#fn_name(event, event_context) },
-        None => quote! {
+    // Generated `on_event` body.
+    //
+    // `#[on_event]` (All): forward the raw bytes + EventContext unchanged.
+    //
+    // `#[on_event(Variant, ...)]` (filtered): decode the payload, match the
+    // variant, unpack the strongly-typed `EventPayload::Data(ctx)` (and, for
+    // handle-bearing events, the `EventContext` handles), then call **every**
+    // handler that declared this variant. The same variant may be handled by
+    // multiple `#[on_event(...)]` functions, so all of them are invoked in
+    // declaration order; the first non-`Ok` result short-circuits.
+    // Non-matching events / decode failures / context mismatches fall through
+    // to `PluginResult::Ok` with a log line.
+    let on_event_body = if let Some((all_fn, _)) = on_event_all {
+        quote! { #mod_path::#all_fn(event, event_context) }
+    } else if !on_event_filtered.is_empty() {
+        // Map each variant to the list of handler fns that declared it.
+        let mut variant_handlers: Vec<(Ident, Vec<Ident>)> = Vec::new();
+        for (fn_name, variants) in &on_event_filtered {
+            for (v, _) in variants {
+                match variant_handlers.iter_mut().find(|(vv, _)| vv == v) {
+                    Some((_, fns)) => fns.push(fn_name.clone()),
+                    None => variant_handlers.push((v.clone(), vec![fn_name.clone()])),
+                }
+            }
+        }
+
+        let dispatch_arms: Vec<TokenStream> = variant_handlers
+            .iter()
+            .map(|(v, fns)| {
+                // Look up the EventVariantInfo for this variant (same for all
+                // handlers that declared it).
+                let info = on_event_filtered
+                    .iter()
+                    .flat_map(|(_, variants)| variants)
+                    .find(|(vv, _)| vv == v)
+                    .map(|(_, info)| info)
+                    .expect("variant already validated at parse time");
+                // The context (handle) unpacking is identical for every handler
+                // of this variant, so we do it ONCE per variant and reuse the
+                // handles for all handler calls. Each handler receives its own
+                // clone of `ctx` to avoid a use-after-move.
+                let calls: Vec<TokenStream> = fns
+                    .iter()
+                    .map(|fn_name| match &info.context {
+                        Some((_ctx_pat, handles)) => quote! {
+                            let __r = #mod_path::#fn_name(ctx.clone(), #(#handles),*);
+                            if let cosmox_api::api::bindings::exports::cosmox::plugin::host_notifier::PluginResult::Ok = __r {
+                                // ok, continue to next handler
+                            } else {
+                                return __r;
+                            }
+                        },
+                        None => quote! {
+                            let __r = #mod_path::#fn_name(ctx.clone());
+                            if let cosmox_api::api::bindings::exports::cosmox::plugin::host_notifier::PluginResult::Ok = __r {
+                                // ok, continue to next handler
+                            } else {
+                                return __r;
+                            }
+                        },
+                    })
+                    .collect();
+                // Wrap the calls in a single context-unpacking block (per variant).
+                let arm_body = match &info.context {
+                    Some((ctx_pat, _handles)) => quote! {
+                        if let #ctx_pat = event_context {
+                            #(#calls)*
+                        } else {
+                            log::warn!(
+                                "event {} received an unexpected event_context; ignoring",
+                                stringify!(#v),
+                            );
+                        }
+                    },
+                    // The `on_event` trait method has a fixed signature that always
+                    // takes an `event_context` parameter, but handle-less variants
+                    // never read it. Discard it here so generated plugins don't emit
+                    // an `unused variable: event_context` warning.
+                    None => quote! {
+                        let _ = event_context;
+                        #(#calls)*
+                    },
+                };
+                quote! {
+                    cosmox_api::event::Event::#v(
+                        cosmox_api::event::EventPayload::Data(ctx),
+                    ) => {
+                        #arm_body
+                        cosmox_api::api::bindings::exports::cosmox::plugin::host_notifier::PluginResult::Ok
+                    }
+                }
+            })
+            .collect();
+        quote! {
+            match cosmox_api::event::Event::decode(event) {
+                ::std::result::Result::Ok(event) => match event {
+                    #(#dispatch_arms)*
+                    _ => {
+                        log::debug!("on_event: unhandled event variant, ignoring");
+                        cosmox_api::api::bindings::exports::cosmox::plugin::host_notifier::PluginResult::Ok
+                    }
+                },
+                ::std::result::Result::Err(err) => {
+                    log::error!("on_event: failed to decode event payload: {err:#?}");
+                    cosmox_api::api::bindings::exports::cosmox::plugin::host_notifier::PluginResult::Ok
+                }
+            }
+        }
+    } else {
+        quote! {
             cosmox_api::api::bindings::exports::cosmox::plugin::host_notifier::PluginResult::Ok
-        },
+        }
     };
 
     let on_command_body = match on_command {
@@ -579,7 +937,7 @@ mod tests {
             _ => panic!("expected fn"),
         };
         assert_eq!(
-            extract_annotation_name(&mut func.attrs),
+            extract_annotation(&mut func.attrs).map(|(n, _, _)| n),
             Some("on_load".into())
         );
         assert!(func.attrs.is_empty(), "annotation should be consumed");
@@ -592,7 +950,7 @@ mod tests {
             syn::Item::Fn(f) => f,
             _ => panic!("expected fn"),
         };
-        assert_eq!(extract_annotation_name(&mut func.attrs), None);
+        assert_eq!(extract_annotation(&mut func.attrs).map(|(n, _, _)| n), None);
         // unknown annotation should NOT be consumed
         assert_eq!(func.attrs.len(), 1);
     }
@@ -621,7 +979,7 @@ mod tests {
             parsed.annotated,
             vec![
                 AnnotatedFn::OnLoad(format_ident!("load_fn")),
-                AnnotatedFn::OnEvent(format_ident!("event_fn")),
+                AnnotatedFn::OnEvent(format_ident!("event_fn"), OnEventAttr::All),
                 AnnotatedFn::Health(format_ident!("health_fn")),
             ]
         );
@@ -650,7 +1008,7 @@ mod tests {
                 OnUnload(format_ident!("b")),
                 OnEnable(format_ident!("c")),
                 OnDisable(format_ident!("d")),
-                OnEvent(format_ident!("e")),
+                OnEvent(format_ident!("e"), OnEventAttr::All),
                 OnCommand(format_ident!("f")),
                 OnConfig(format_ident!("g")),
                 Health(format_ident!("h")),
@@ -900,5 +1258,252 @@ mod tests {
             },
         );
         assert_eq!(output.to_string(), expected.to_string());
+    }
+
+    #[test]
+    fn filtered_same_variant_multiple_handlers_coexist() {
+        // The same variant may be handled by multiple #[on_event(...)] fns;
+        // both handlers must be invoked when that event is dispatched.
+        let input = r#"
+            #[on_event(OnScanComplete)]
+            fn a() {}
+
+            #[on_event(OnScanComplete)]
+            fn b() {}
+        "#;
+        let mut mod_item = parse_mod(input);
+        let parsed = parse_plugin_module(&mut mod_item)
+            .expect("same variant across handlers should be allowed");
+        let attr = PluginAttr {
+            media_types: vec![],
+        };
+        let output = generate_plugin(attr, &format_ident!("test_mod"), parsed).unwrap();
+        let s = output.to_string();
+        assert!(
+            s.contains("super :: test_mod :: a (ctx . clone ())"),
+            "first handler should be called: {s}"
+        );
+        assert!(
+            s.contains("super :: test_mod :: b (ctx . clone ())"),
+            "second handler should also be called: {s}"
+        );
+        // Both share the same OnScanComplete arm, so only one register call.
+        let reg_count = s.matches("register ()").count();
+        assert!(
+            reg_count == 1,
+            "OnScanComplete should be registered exactly once (found {reg_count}): {s}"
+        );
+    }
+
+    #[test]
+    fn filtered_different_variants_coexist_is_ok() {
+        let input = r#"
+            #[on_event(OnScanComplete)]
+            fn a() {}
+
+            #[on_event(OnUserLogin)]
+            fn b() {}
+        "#;
+        let mut mod_item = parse_mod(input);
+        assert!(
+            parse_plugin_module(&mut mod_item).is_ok(),
+            "different variants should each be allowed their own handler"
+        );
+    }
+
+    #[test]
+    fn on_event_all_and_filtered_conflict_is_err() {
+        let input = r#"
+            #[on_event]
+            fn handle_all() {}
+
+            #[on_event(OnScanComplete)]
+            fn handle_one() {}
+        "#;
+        let mut mod_item = parse_mod(input);
+        assert!(
+            parse_plugin_module(&mut mod_item).is_err(),
+            "mixing #[on_event] and #[[on_event(...)] should be an error"
+        );
+    }
+
+    #[test]
+    fn on_event_filtered_then_all_conflict_is_err() {
+        // Reverse order of the all/filtered conflict: the filtered handler
+        // appears first, then the bare `#[on_event]`. The All arm must reject
+        // this too (it checks `seen_on_event_filtered`), which is a different
+        // code path from `on_event_all_and_filtered_conflict_is_err`.
+        let input = r#"
+            #[on_event(OnScanComplete)]
+            fn handle_one() {}
+
+            #[on_event]
+            fn handle_all() {}
+        "#;
+        let mut mod_item = parse_mod(input);
+        assert!(
+            parse_plugin_module(&mut mod_item).is_err(),
+            "mixing #[on_event(...)] then #[on_event] should be an error"
+        );
+    }
+
+    #[test]
+    fn on_event_all_lists_all_filtered_variants_in_error() {
+        // When `#[on_event]` (All) conflicts with multiple filtered handlers,
+        // the error must list EVERY declared variant, not only the first one.
+        let input = r#"
+            #[on_event(OnScanComplete)]
+            fn a() {}
+
+            #[on_event(OnUserLogin, OnLibraryCrate)]
+            fn b() {}
+
+            #[on_event]
+            fn handle_all() {}
+        "#;
+        let mut mod_item = parse_mod(input);
+        let msg = match parse_plugin_module(&mut mod_item) {
+            Ok(_) => panic!("mixing #[on_event] and #[on_event(...)] should be an error"),
+            Err(e) => e.to_string(),
+        };
+        assert!(
+            msg.contains("OnScanComplete"),
+            "error should mention OnScanComplete: {msg}"
+        );
+        assert!(
+            msg.contains("OnUserLogin"),
+            "error should mention OnUserLogin: {msg}"
+        );
+        assert!(
+            msg.contains("OnLibraryCrate"),
+            "error should mention OnLibraryCrate: {msg}"
+        );
+    }
+
+    #[test]
+    fn on_event_unknown_variant_is_err() {
+        let input = r#"
+            #[on_event(NotARealEvent)]
+            fn a() {}
+        "#;
+        let mut mod_item = parse_mod(input);
+        assert!(
+            parse_plugin_module(&mut mod_item).is_err(),
+            "referencing a non-existent event variant should be an error"
+        );
+    }
+
+    #[test]
+    fn on_event_filtered_generates_decode_and_dispatch() {
+        let input = r#"
+            #[on_event(OnMetadataRawTreeReady)]
+            fn a() {}
+        "#;
+        let mut mod_item = parse_mod(input);
+        let parsed = parse_plugin_module(&mut mod_item).unwrap();
+        let attr = PluginAttr {
+            media_types: vec![],
+        };
+        let output = generate_plugin(attr, &format_ident!("test_mod"), parsed).unwrap();
+        let s = output.to_string();
+
+        assert!(s.contains("Event :: decode"), "should decode the payload");
+        assert!(
+            s.contains("EventPayload :: Data (ctx)"),
+            "should unpack EventPayload::Data into ctx: {s}"
+        );
+        assert!(
+            s.contains(
+                "EventContext :: MetadataReadyContext ((ref metadata_handle , ref path_mapping_handle))"
+            ),
+            "should unpack the MetadataReadyContext handles by reference: {s}"
+        );
+        assert!(
+            s.contains(
+                "super :: test_mod :: a (ctx . clone () , metadata_handle , path_mapping_handle)"
+            ),
+            "should call handler with ctx + &handles: {s}"
+        );
+        assert!(
+            s.contains("log :: warn !"),
+            "should warn on context mismatch: {s}"
+        );
+        assert!(
+            s.contains("log :: error !"),
+            "should log decode errors: {s}"
+        );
+    }
+
+    #[test]
+    fn on_event_multi_variant_generates_multiple_arms() {
+        let input = r#"
+            #[on_event(OnScanComplete, OnUserLogin)]
+            fn a() {}
+        "#;
+        let mut mod_item = parse_mod(input);
+        let parsed = parse_plugin_module(&mut mod_item).unwrap();
+        let attr = PluginAttr {
+            media_types: vec![],
+        };
+        let output = generate_plugin(attr, &format_ident!("test_mod"), parsed).unwrap();
+        let s = output.to_string();
+
+        assert!(
+            s.contains("cosmox_api :: event :: Event :: decode"),
+            "should decode the payload: {s}"
+        );
+        assert!(
+            s.contains(
+                "cosmox_api :: event :: Event :: OnScanComplete (cosmox_api :: event :: EventPayload :: Data (ctx) ,)"
+            ),
+            "should match OnScanComplete: {s}"
+        );
+        assert!(
+            s.contains(
+                "cosmox_api :: event :: Event :: OnUserLogin (cosmox_api :: event :: EventPayload :: Data (ctx) ,)"
+            ),
+            "should match OnUserLogin: {s}"
+        );
+        assert!(
+            s.contains("super :: test_mod :: a (ctx . clone ())"),
+            "both arms should call the same handler with ctx: {s}"
+        );
+        let reg_count = s.matches("register ()").count();
+        assert!(
+            reg_count >= 2,
+            "should register each variant (found {reg_count}): {s}"
+        );
+    }
+
+    #[test]
+    fn on_event_unit_variant_generates_ctx_ignore() {
+        // `OnScanComplete` is a handle-less variant, so the generated arm must:
+        //  - discard the fixed `event_context` parameter (otherwise the plugin
+        //    would warn `unused variable: event_context`), and
+        //  - call the handler with `ctx` only, with no `EventContext` variant match.
+        let input = r#"
+            #[on_event(OnScanComplete)]
+            fn a() {}
+        "#;
+        let mut mod_item = parse_mod(input);
+        let parsed = parse_plugin_module(&mut mod_item).unwrap();
+        let attr = PluginAttr {
+            media_types: vec![],
+        };
+        let output = generate_plugin(attr, &format_ident!("test_mod"), parsed).unwrap();
+        let s = output.to_string();
+
+        assert!(
+            s.contains("let _ = event_context"),
+            "handle-less arm must discard the event_context param to avoid an unused-variable warning: {s}"
+        );
+        assert!(
+            s.contains("super :: test_mod :: a (ctx . clone ())"),
+            "unit event arm should call handler with ctx only: {s}"
+        );
+        assert!(
+            !s.contains("EventContext ::"),
+            "unit event arm should not reference any EventContext variant: {s}"
+        );
     }
 }
