@@ -34,6 +34,34 @@ enum OnEventAttr {
     Filtered(Vec<(Ident, EventVariantInfo)>),
 }
 
+/// Identifies the strongly-typed payload (`ctx`) type for an `Event` variant.
+/// Each variant of this enum corresponds to a distinct `D` type in
+/// `EventPayload<C, D>`. The macro uses this at parse time (never in generated
+/// code) to ensure all variants in a single `#[on_event(...)]` share the same
+/// handler signature — a single handler fn cannot receive different `ctx` types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum CtxTy {
+    /// The payload type is `()` — no useful data, only the event kind matters.
+    Unit,
+    /// The payload type is `OnMetadataRawTreeReadyEventContext`.
+    MetadataReady,
+    /// The payload type is `OnMetadataLocalTreeReadyEventContext`.
+    MetadataLocalReady,
+    /// The payload type is `OnServerErrorEventContext`.
+    ServerError,
+}
+
+impl std::fmt::Display for CtxTy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CtxTy::Unit => f.write_str("()"),
+            CtxTy::MetadataReady => f.write_str("OnMetadataRawTreeReadyEventContext"),
+            CtxTy::MetadataLocalReady => f.write_str("OnMetadataLocalTreeReadyEventContext"),
+            CtxTy::ServerError => f.write_str("OnServerErrorEventContext"),
+        }
+    }
+}
+
 /// Describes how a filtered `#[on_event(Variant)]` handler is invoked.
 ///
 /// `context` is `Some((variant_pat, handle_idents))` when the host pairs this
@@ -42,26 +70,64 @@ enum OnEventAttr {
 /// unpacking its handles. `None` means the event carries no handles, so the
 /// handler is called directly (the `event_context` parameter is ignored). The
 /// strongly-typed business payload (the `D` of `EventPayload<C, D>`) is bound
-/// as `ctx` and forwarded to the handler; its type is inferred from the
-/// `Event` variant, so it need not be stored here.
+/// as `ctx` and forwarded to the handler.
+///
+/// `ctx_ty` identifies the payload type. It is used only by the macro-internal
+/// compatibility check (a single `#[on_event(...)]` shares one handler fn, so
+/// every listed variant must share the same handler signature); it is never
+/// emitted into the generated code.
 #[derive(Debug, Clone)]
 struct EventVariantInfo {
     context: Option<(TokenStream, Vec<Ident>)>,
+    ctx_ty: CtxTy,
 }
 
-// `TokenStream` is not `PartialEq`, so we compare only the handle idents
-// (the `TokenStream` pattern is fully determined by those idents). The lookup
-// table in `event_variant_info` gives every variant a distinct handle-ident
-// set, so two infos compare equal iff the variants share the same handler
-// signature — this is what the single-`#[on_event(...)]` compatibility check
-// relies on. `None` (no handles) equals only `None`.
+// `EventVariantInfo` equality (the `PartialEq` impl) decides whether two variants
+// can share one handler fn. Two infos are equal iff all three hold: their
+// `ctx_ty` matches (a `CtxTy` enum comparison), their context `TokenStream`
+// patterns match (compared by normalized string via `same_context_pattern`,
+// since string comparison ignores span/token-identity differences), and their
+// handle-ident lists match in order (via `same_handles`). The lookup table in
+// `event_variant_info` emits handle idents in a fixed order, so an ordered
+// `Vec<Ident>` comparison suffices.
+
+// Handle idents are compared in order (the lookup table emits them in a fixed
+// order). Returns true iff both are `None` or both `Some` with equal ident lists.
+fn same_handles(
+    a: &Option<(TokenStream, Vec<Ident>)>,
+    b: &Option<(TokenStream, Vec<Ident>)>,
+) -> bool {
+    match (a, b) {
+        (Some((_, a)), Some((_, b))) => a == b,
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+// Compares the `context` `TokenStream` patterns by normalized string
+// (ignoring span/token-identity differences). This catches cases where two
+// variants share the same handle-ident list but differ in the `EventContext`
+// variant being unpacked.
+fn same_context_pattern(
+    a: &Option<(TokenStream, Vec<Ident>)>,
+    b: &Option<(TokenStream, Vec<Ident>)>,
+) -> bool {
+    match (a, b) {
+        (Some((pa, _)), Some((pb, _))) => pa.to_string() == pb.to_string(),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+// `PartialEq` is required because `OnEventAttr`/`AnnotatedFn` derive it (tests
+// compare `Vec<AnnotatedFn>`). It compares `ctx_ty` via `CtxTy` enum equality,
+// the context `TokenStream` pattern by string (via `same_context_pattern`),
+// and the handle idents via `same_handles`.
 impl PartialEq for EventVariantInfo {
     fn eq(&self, other: &Self) -> bool {
-        match (&self.context, &other.context) {
-            (Some((_, a)), Some((_, b))) => a == b,
-            (None, None) => true,
-            _ => false,
-        }
+        self.ctx_ty == other.ctx_ty
+            && same_handles(&self.context, &other.context)
+            && same_context_pattern(&self.context, &other.context)
     }
 }
 
@@ -73,13 +139,17 @@ fn event_variant_info(variant: &Ident) -> Option<EventVariantInfo> {
     let ctx_mod = quote! {
         cosmox_api::api::bindings::cosmox::plugin::context::EventContext
     };
-    let no_handles = || EventVariantInfo { context: None };
+    let no_handles = || EventVariantInfo {
+        context: None,
+        ctx_ty: CtxTy::Unit,
+    };
     match variant.to_string().as_str() {
         "OnMetadataRawTreeReady" => Some(EventVariantInfo {
             context: Some((
                 quote! { #ctx_mod::MetadataReadyContext((ref metadata_handle, ref path_mapping_handle)) },
                 vec![p("metadata_handle"), p("path_mapping_handle")],
             )),
+            ctx_ty: CtxTy::MetadataReady,
         }),
         "OnMetadataLocalTreeReady" => Some(EventVariantInfo {
             context: Some((
@@ -92,9 +162,13 @@ fn event_variant_info(variant: &Ident) -> Option<EventVariantInfo> {
                     p("tag_handle"),
                 ],
             )),
+            ctx_ty: CtxTy::MetadataLocalReady,
         }),
-        "OnServerError"
-        | "OnScanComplete"
+        "OnServerError" => Some(EventVariantInfo {
+            context: None,
+            ctx_ty: CtxTy::ServerError,
+        }),
+        "OnScanComplete"
         | "OnNewFileDiscovered"
         | "OnUserLogin"
         | "OnLibraryCrate"
@@ -258,6 +332,38 @@ fn parse_plugin_module(mod_item: &mut ItemMod) -> syn::Result<ParsedPlugin> {
                                         format_args!(
                                             "unknown event variant `{v}` in `#[on_event(...)]`; it is not a variant of `cosmox_api::event::Event`",
                                             v = v,
+                                        ),
+                                    ));
+                                }
+                            }
+                            // All variants in one `#[on_event(...)]` share a single
+                            // handler fn, so their handler signatures must match: same
+                            // handle list AND same payload (`ctx`) type. Check each
+                            // separately so the error names the actual mismatch.
+                            let base = event_variant_info(&variants.variants[0])
+                                .expect("variant already validated above");
+                            for v in &variants.variants[1..] {
+                                let info =
+                                    event_variant_info(v).expect("variant already validated above");
+                                if !same_handles(&base.context, &info.context) {
+                                    return Err(syn::Error::new(
+                                        attr_span,
+                                        format_args!(
+                                            "event variants `{first}` and `{second}` have incompatible handler signatures (different context handles) in a single `#[on_event(...)]`; declare them with separate `#[on_event({first})]` / `#[on_event({second})]` attributes instead",
+                                            first = variants.variants[0],
+                                            second = v,
+                                        ),
+                                    ));
+                                }
+                                if base.ctx_ty != info.ctx_ty {
+                                    return Err(syn::Error::new(
+                                        attr_span,
+                                        format_args!(
+                                            "event variants `{first}` and `{second}` have incompatible handler signatures (different payload type: expected `{expected}`, got `{actual}`) in a single `#[on_event(...)]`; declare them with separate `#[on_event({first})]` / `#[on_event({second})]` attributes instead",
+                                            first = variants.variants[0],
+                                            second = v,
+                                            expected = base.ctx_ty,
+                                            actual = info.ctx_ty,
                                         ),
                                     ));
                                 }
@@ -1390,6 +1496,69 @@ mod tests {
         assert!(
             parse_plugin_module(&mut mod_item).is_err(),
             "referencing a non-existent event variant should be an error"
+        );
+    }
+
+    #[test]
+    fn on_event_filtered_incompatible_variant_signatures_is_err() {
+        // A single #[on_event(...)] shares one handler fn, so variants with
+        // different handler signatures (here OnMetadataRawTreeReady carries
+        // handles while OnScanComplete does not) must be rejected with a clear
+        // message rather than producing call code that fails to compile.
+        let input = r#"
+            #[on_event(OnMetadataRawTreeReady, OnScanComplete)]
+            fn a() {}
+        "#;
+        let mut mod_item = parse_mod(input);
+        let msg = match parse_plugin_module(&mut mod_item) {
+            Ok(_) => panic!(
+                "mixing incompatible-signature variants in one #[on_event(...)] should be an error"
+            ),
+            Err(e) => e.to_string(),
+        };
+        assert!(
+            msg.contains("OnMetadataRawTreeReady"),
+            "error should name the first variant: {msg}"
+        );
+        assert!(
+            msg.contains("OnScanComplete"),
+            "error should name the conflicting variant: {msg}"
+        );
+    }
+
+    #[test]
+    fn on_event_filtered_incompatible_ctx_type_is_err() {
+        // Both variants carry no handles, so a handle-only check would accept
+        // them — but their payload (`ctx`) types differ (`()` vs
+        // `OnServerErrorEventContext`), so one shared handler fn cannot serve
+        // both. The compatibility check must reject this with a payload-type
+        // specific message (not a handle-mismatch message).
+        let input = r#"
+            #[on_event(OnScanComplete, OnServerError)]
+            fn a() {}
+        "#;
+        let mut mod_item = parse_mod(input);
+        let msg = match parse_plugin_module(&mut mod_item) {
+            Ok(_) => panic!(
+                "mixing different-payload-type variants in one #[on_event(...)] should be an error"
+            ),
+            Err(e) => e.to_string(),
+        };
+        assert!(
+            msg.contains("OnScanComplete"),
+            "error should name the first variant: {msg}"
+        );
+        assert!(
+            msg.contains("OnServerError"),
+            "error should name the conflicting variant: {msg}"
+        );
+        assert!(
+            msg.contains("different payload type"),
+            "error should pinpoint the payload-type mismatch: {msg}"
+        );
+        assert!(
+            !msg.contains("different context handles"),
+            "error should NOT report a handle mismatch for this case: {msg}"
         );
     }
 
