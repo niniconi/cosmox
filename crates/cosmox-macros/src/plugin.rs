@@ -626,28 +626,22 @@ fn generate_plugin(
     let on_event_body = if let Some((all_fn, _)) = on_event_all {
         quote! { #mod_path::#all_fn(event, event_context) }
     } else if !on_event_filtered.is_empty() {
-        // Map each variant to the list of handler fns that declared it.
-        let mut variant_handlers: Vec<(Ident, Vec<Ident>)> = Vec::new();
+        // Map each variant to the list of handler fns that declared it,
+        // carrying the EventVariantInfo directly so the dispatch builder
+        // doesn't need a second lookup.
+        let mut variant_handlers: Vec<(Ident, Vec<Ident>, EventVariantInfo)> = Vec::new();
         for (fn_name, variants) in &on_event_filtered {
-            for (v, _) in variants {
-                match variant_handlers.iter_mut().find(|(vv, _)| vv == v) {
-                    Some((_, fns)) => fns.push(fn_name.clone()),
-                    None => variant_handlers.push((v.clone(), vec![fn_name.clone()])),
+            for (v, info) in variants {
+                match variant_handlers.iter_mut().find(|(vv, _, _)| vv == v) {
+                    Some((_, fns, _)) => fns.push(fn_name.clone()),
+                    None => variant_handlers.push((v.clone(), vec![fn_name.clone()], info.clone())),
                 }
             }
         }
 
         let dispatch_arms: Vec<TokenStream> = variant_handlers
             .iter()
-            .map(|(v, fns)| {
-                // Look up the EventVariantInfo for this variant (same for all
-                // handlers that declared it).
-                let info = on_event_filtered
-                    .iter()
-                    .flat_map(|(_, variants)| variants)
-                    .find(|(vv, _)| vv == v)
-                    .map(|(_, info)| info)
-                    .expect("variant already validated at parse time");
+            .map(|(v, fns, info)| {
                 // The context (handle) unpacking is identical for every handler
                 // of this variant, so we do it ONCE per variant and reuse the
                 // handles for all handler calls. Each handler receives its own
