@@ -1,6 +1,7 @@
 use anyhow::{Result, anyhow};
 use bincode::{Decode, Encode};
 
+use crate::event::cond::Cond;
 use crate::event::payloads::{
     OnMetadataLocalTreeReadyEventCond, OnMetadataLocalTreeReadyEventContext,
     OnMetadataRawTreeReadyEventCond, OnMetadataRawTreeReadyEventContext, OnServerErrorEventCond,
@@ -41,11 +42,12 @@ pub enum Event {
 
 #[derive(Debug, Clone, Encode, Decode)]
 pub enum EventPayload<C, D> {
-    /// The filter condition for plugin event registration;
-    /// the event is triggered only when the condition is met.
-    Cond(C),
-    /// The plugin receives the event context data after the event is triggered.
-    Data(D),
+    /// Carries the filter condition during plugin registration.
+    /// Used in the `register()` call — no event data yet.
+    Registration(C),
+    /// Carries both the matching cond value and the event data during dispatch.
+    /// The plugin uses `cond` to route to the correct handler.
+    Dispatch { cond: C, data: D },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -84,13 +86,32 @@ impl Event {
     }
 }
 
+impl From<Event> for Cond {
+    fn from(event: Event) -> Self {
+        use crate::event::EventPayload::*;
+        match event {
+            Event::OnMetadataRawTreeReady(Registration(c))
+            | Event::OnMetadataRawTreeReady(Dispatch { cond: c, .. }) => {
+                Cond::MetadataRawTreeReady(c)
+            }
+            Event::OnMetadataLocalTreeReady(Registration(c))
+            | Event::OnMetadataLocalTreeReady(Dispatch { cond: c, .. }) => {
+                Cond::MetadataLocalTreeReady(c)
+            }
+            Event::OnServerError(Registration(c))
+            | Event::OnServerError(Dispatch { cond: c, .. }) => Cond::ServerError(c),
+            _ => Cond::Unit,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn event_decode_and_encode() {
-        let event: Event = Event::OnServerStart(EventPayload::Data(()));
+        let event: Event = Event::OnServerStart(EventPayload::Dispatch { cond: (), data: () });
         let data = event.encode().unwrap();
         let event_decode = Event::decode(data).unwrap();
         assert_eq!(event, event_decode)

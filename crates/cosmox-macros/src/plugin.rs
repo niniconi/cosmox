@@ -34,11 +34,11 @@ enum OnEventAttr {
     Filtered(Vec<(Ident, EventVariantInfo)>),
 }
 
-/// Identifies the strongly-typed payload (`ctx`) type for an `Event` variant.
+/// Identifies the strongly-typed payload (`__data`) type for an `Event` variant.
 /// Each variant of this enum corresponds to a distinct `D` type in
 /// `EventPayload<C, D>`. The macro uses this at parse time (never in generated
 /// code) to ensure all variants in a single `#[on_event(...)]` share the same
-/// handler signature — a single handler fn cannot receive different `ctx` types.
+/// handler signature — a single handler fn cannot receive different `__data` types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum CtxTy {
     /// The payload type is `()` — no useful data, only the event kind matters.
@@ -70,7 +70,7 @@ impl std::fmt::Display for CtxTy {
 /// unpacking its handles. `None` means the event carries no handles, so the
 /// handler is called directly (the `event_context` parameter is ignored). The
 /// strongly-typed business payload (the `D` of `EventPayload<C, D>`) is bound
-/// as `ctx` and forwarded to the handler.
+/// as `__data` and forwarded to the handler.
 ///
 /// `ctx_ty` identifies the payload type. It is used only by the macro-internal
 /// compatibility check (a single `#[on_event(...)]` shares one handler fn, so
@@ -567,7 +567,7 @@ fn generate_plugin(
             .map(|(v, _)| {
                 quote! {
                     cosmox_api::event::Event::#v(
-                        cosmox_api::event::EventPayload::Cond(
+                        cosmox_api::event::EventPayload::Registration(
                             ::std::default::Default::default(),
                         ),
                     ).register().expect(
@@ -616,7 +616,7 @@ fn generate_plugin(
     // `#[on_event]` (All): forward the raw bytes + EventContext unchanged.
     //
     // `#[on_event(Variant, ...)]` (filtered): decode the payload, match the
-    // variant, unpack the strongly-typed `EventPayload::Data(ctx)` (and, for
+    // variant, unpack the strongly-typed `EventPayload::Dispatch { cond, data }` (and, for
     // handle-bearing events, the `EventContext` handles), then call **every**
     // handler that declared this variant. The same variant may be handled by
     // multiple `#[on_event(...)]` functions, so all of them are invoked in
@@ -645,12 +645,12 @@ fn generate_plugin(
                 // The context (handle) unpacking is identical for every handler
                 // of this variant, so we do it ONCE per variant and reuse the
                 // handles for all handler calls. Each handler receives its own
-                // clone of `ctx` to avoid a use-after-move.
+                // clone of `__data` to avoid a use-after-move.
                 let calls: Vec<TokenStream> = fns
                     .iter()
                     .map(|fn_name| match &info.context {
                         Some((_ctx_pat, handles)) => quote! {
-                            let __r = #mod_path::#fn_name(ctx.clone(), #(#handles),*);
+                            let __r = #mod_path::#fn_name(__data.clone(), #(#handles),*);
                             if let cosmox_api::api::bindings::exports::cosmox::plugin::host_notifier::PluginResult::Ok = __r {
                                 // ok, continue to next handler
                             } else {
@@ -658,7 +658,7 @@ fn generate_plugin(
                             }
                         },
                         None => quote! {
-                            let __r = #mod_path::#fn_name(ctx.clone());
+                            let __r = #mod_path::#fn_name(__data.clone());
                             if let cosmox_api::api::bindings::exports::cosmox::plugin::host_notifier::PluginResult::Ok = __r {
                                 // ok, continue to next handler
                             } else {
@@ -690,7 +690,7 @@ fn generate_plugin(
                 };
                 quote! {
                     cosmox_api::event::Event::#v(
-                        cosmox_api::event::EventPayload::Data(ctx),
+                        cosmox_api::event::EventPayload::Dispatch { cond: __cond, data: __data },
                     ) => {
                         #arm_body
                         cosmox_api::api::bindings::exports::cosmox::plugin::host_notifier::PluginResult::Ok
@@ -1380,11 +1380,11 @@ mod tests {
         let output = generate_plugin(attr, &format_ident!("test_mod"), parsed).unwrap();
         let s = output.to_string();
         assert!(
-            s.contains("super :: test_mod :: a (ctx . clone ())"),
+            s.contains("super :: test_mod :: a (__data . clone ())"),
             "first handler should be called: {s}"
         );
         assert!(
-            s.contains("super :: test_mod :: b (ctx . clone ())"),
+            s.contains("super :: test_mod :: b (__data . clone ())"),
             "second handler should also be called: {s}"
         );
         // Both share the same OnScanComplete arm, so only one register call.
@@ -1572,8 +1572,8 @@ mod tests {
 
         assert!(s.contains("Event :: decode"), "should decode the payload");
         assert!(
-            s.contains("EventPayload :: Data (ctx)"),
-            "should unpack EventPayload::Data into ctx: {s}"
+            s.contains("EventPayload :: Dispatch { cond"),
+            "should unpack EventPayload::Dispatch into cond+data: {s}"
         );
         assert!(
             s.contains(
@@ -1583,9 +1583,9 @@ mod tests {
         );
         assert!(
             s.contains(
-                "super :: test_mod :: a (ctx . clone () , metadata_handle , path_mapping_handle)"
+                "super :: test_mod :: a (__data . clone () , metadata_handle , path_mapping_handle)"
             ),
-            "should call handler with ctx + &handles: {s}"
+            "should call handler with __data + &handles: {s}"
         );
         assert!(
             s.contains("log :: warn !"),
@@ -1617,19 +1617,19 @@ mod tests {
         );
         assert!(
             s.contains(
-                "cosmox_api :: event :: Event :: OnScanComplete (cosmox_api :: event :: EventPayload :: Data (ctx) ,)"
+                "cosmox_api :: event :: Event :: OnScanComplete (cosmox_api :: event :: EventPayload :: Dispatch { cond"
             ),
             "should match OnScanComplete: {s}"
         );
         assert!(
             s.contains(
-                "cosmox_api :: event :: Event :: OnUserLogin (cosmox_api :: event :: EventPayload :: Data (ctx) ,)"
+                "cosmox_api :: event :: Event :: OnUserLogin (cosmox_api :: event :: EventPayload :: Dispatch { cond"
             ),
             "should match OnUserLogin: {s}"
         );
         assert!(
-            s.contains("super :: test_mod :: a (ctx . clone ())"),
-            "both arms should call the same handler with ctx: {s}"
+            s.contains("super :: test_mod :: a (__data . clone ())"),
+            "both arms should call the same handler with __data: {s}"
         );
         let reg_count = s.matches("register ()").count();
         assert!(
@@ -1643,7 +1643,7 @@ mod tests {
         // `OnScanComplete` is a handle-less variant, so the generated arm must:
         //  - discard the fixed `event_context` parameter (otherwise the plugin
         //    would warn `unused variable: event_context`), and
-        //  - call the handler with `ctx` only, with no `EventContext` variant match.
+        //  - call the handler with `__data` only, with no `EventContext` variant match.
         let input = r#"
             #[on_event(OnScanComplete)]
             fn a() {}
@@ -1661,8 +1661,8 @@ mod tests {
             "handle-less arm must discard the event_context param to avoid an unused-variable warning: {s}"
         );
         assert!(
-            s.contains("super :: test_mod :: a (ctx . clone ())"),
-            "unit event arm should call handler with ctx only: {s}"
+            s.contains("super :: test_mod :: a (__data . clone ())"),
+            "unit event arm should call handler with __data only: {s}"
         );
         assert!(
             !s.contains("EventContext ::"),

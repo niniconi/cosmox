@@ -7,7 +7,10 @@ use std::{
 use cosmox_api::{
     event::{
         Event, EventPayload,
-        payloads::{OnMetadataLocalTreeReadyEventContext, OnMetadataRawTreeReadyEventContext},
+        payloads::{
+            OnMetadataLocalTreeReadyEventCond, OnMetadataLocalTreeReadyEventContext,
+            OnMetadataRawTreeReadyEventCond, OnMetadataRawTreeReadyEventContext,
+        },
     },
     metadata::{Metadata, MetadataType},
 };
@@ -72,12 +75,15 @@ pub async fn start_scanner(
             log::debug!("Metadata tree been ready");
             let count = Arc::new(AtomicU64::new(count));
 
-            let event = Arc::new(Event::OnMetadataRawTreeReady(EventPayload::Data(
-                OnMetadataRawTreeReadyEventContext {
+            let event = Arc::new(Event::OnMetadataRawTreeReady(EventPayload::Dispatch {
+                cond: OnMetadataRawTreeReadyEventCond {
+                    r#type: vec![scanner_context.library_type.clone()],
+                },
+                data: OnMetadataRawTreeReadyEventContext {
                     lid: scanner_context.lid,
                     r#type: scanner_context.library_type.clone(),
                 },
-            )));
+            }));
 
             let _ = PluginManager::notify_all(event, |store_mut_ref| {
                 let resource_metadata_context: Resource<MetadataContext> =
@@ -108,13 +114,17 @@ pub async fn start_scanner(
             .await
             .inspect_err(|e| log::error!("Failed to notify OnMetadataRawTreeReady event: {e}"));
 
-            let event = Arc::new(Event::OnMetadataLocalTreeReady(EventPayload::Data(
-                OnMetadataLocalTreeReadyEventContext {
+            let event = Arc::new(Event::OnMetadataLocalTreeReady(EventPayload::Dispatch {
+                cond: OnMetadataLocalTreeReadyEventCond {
+                    r#type: vec![scanner_context.library_type.clone()],
+                    exclude_from_plugins: vec![],
+                },
+                data: OnMetadataLocalTreeReadyEventContext {
                     lid: scanner_context.lid,
                     r#type: scanner_context.library_type.clone(),
                     from_plugins: vec![],
                 },
-            )));
+            }));
 
             let _ = PluginManager::notify_all(event, |store_mut_ref| {
                 let resource_metadata_context: Resource<MetadataContext> =
