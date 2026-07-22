@@ -43,8 +43,9 @@ pub enum Event {
 #[derive(Debug, Clone, Encode, Decode)]
 pub enum EventPayload<C, D> {
     /// Carries the filter condition during plugin registration.
+    /// `None` means unconditional (matches all dispatches of this variant).
     /// Used in the `register()` call — no event data yet.
-    Registration(C),
+    Registration(Option<C>),
     /// Carries both the matching cond value and the event data during dispatch.
     /// The plugin uses `cond` to route to the correct handler.
     Dispatch { cond: C, data: D },
@@ -80,6 +81,7 @@ impl PartialEq for Event {
         self.into_key() == other.into_key()
     }
 }
+
 impl Event {
     pub fn into_key(&self) -> EventKey {
         EventKey(std::mem::discriminant(self))
@@ -90,15 +92,18 @@ impl From<Event> for Cond {
     fn from(event: Event) -> Self {
         use crate::event::EventPayload::*;
         match event {
-            Event::OnMetadataRawTreeReady(Registration(c))
+            Event::OnMetadataRawTreeReady(Registration(None)) => Cond::Wildcard,
+            Event::OnMetadataLocalTreeReady(Registration(None)) => Cond::Wildcard,
+            Event::OnServerError(Registration(None)) => Cond::Wildcard,
+            Event::OnMetadataRawTreeReady(Registration(Some(c)))
             | Event::OnMetadataRawTreeReady(Dispatch { cond: c, .. }) => {
                 Cond::MetadataRawTreeReady(c)
             }
-            Event::OnMetadataLocalTreeReady(Registration(c))
+            Event::OnMetadataLocalTreeReady(Registration(Some(c)))
             | Event::OnMetadataLocalTreeReady(Dispatch { cond: c, .. }) => {
                 Cond::MetadataLocalTreeReady(c)
             }
-            Event::OnServerError(Registration(c))
+            Event::OnServerError(Registration(Some(c)))
             | Event::OnServerError(Dispatch { cond: c, .. }) => Cond::ServerError(c),
             _ => Cond::Unit,
         }

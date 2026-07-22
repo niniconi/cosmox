@@ -45,6 +45,7 @@ impl EventCond for () {
 /// correct `EventCond::matches()` implementation based on the variant.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Cond {
+    Wildcard,
     MetadataRawTreeReady(OnMetadataRawTreeReadyEventCond),
     MetadataLocalTreeReady(OnMetadataLocalTreeReadyEventCond),
     ServerError(OnServerErrorEventCond),
@@ -56,6 +57,7 @@ pub enum Cond {
 impl Cond {
     pub fn matches(&self, dispatch: &Cond) -> bool {
         match (self, dispatch) {
+            (Cond::Wildcard, _) => true,
             (Cond::MetadataRawTreeReady(a), Cond::MetadataRawTreeReady(b)) => a.matches(b),
             (Cond::MetadataLocalTreeReady(a), Cond::MetadataLocalTreeReady(b)) => a.matches(b),
             (Cond::ServerError(a), Cond::ServerError(b)) => a.matches(b),

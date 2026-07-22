@@ -677,10 +677,13 @@ fn generate_plugin(
                 }
             })
             .map(|(v, _, cond)| {
-                let reg_cond = cond
-                    .as_ref()
-                    .map(|ts| expand_cond(v, ts))
-                    .unwrap_or_else(|| quote! { ::std::default::Default::default() });
+                let reg_cond = match cond.as_ref() {
+                    Some(ts) => {
+                        let expanded = expand_cond(v, ts);
+                        quote! { ::std::option::Option::Some(#expanded) }
+                    }
+                    None => quote! { ::std::option::Option::None },
+                };
                 quote! {
                     cosmox_api::event::Event::#v(
                         cosmox_api::event::EventPayload::Registration(#reg_cond),
