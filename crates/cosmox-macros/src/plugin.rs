@@ -1,21 +1,54 @@
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::{Delimiter, Span, TokenStream, TokenTree};
 use quote::quote;
 use syn::{
     Attribute, Ident, ItemMod, Visibility,
     parse::{Parse, ParseStream},
 };
 
+/// (variant-ident, dispatch-info, optional-cond) for a single filtered event.
+type FilteredEntry = (Ident, EventVariantInfo, Option<TokenStream>);
+/// (handler-fn-name, list-of-variant-entries) for one `#[on_event(...)]` fn.
+type FilteredGroup = (Ident, Vec<FilteredEntry>);
+/// Per-variant dispatch table entry: (variant, [(handler-fn, optional-cond)], info).
+type VariantHandlerGroup = (Ident, Vec<(Ident, Option<TokenStream>)>, EventVariantInfo);
+
+/// A single event variant entry in `#[on_event(Variant, ...)]`, optionally
+/// carrying a cond expression for registration filtering.
+struct EventVariantEntry {
+    name: Ident,
+    /// Expression for `EventPayload::Registration(...)` at registration time.
+    /// `None` → `::std::default::Default::default()`.
+    cond: Option<TokenStream>,
+}
+
 /// Parse helper for `#[on_event(Variant1, Variant2, ...)]` argument list.
 struct EventVariants {
-    variants: Vec<Ident>,
+    variants: Vec<EventVariantEntry>,
 }
 
 impl Parse for EventVariants {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let mut variants = Vec::new();
         while !input.is_empty() {
-            let ident: Ident = input.parse()?;
-            variants.push(ident);
+            let name: Ident = input.parse()?;
+            // `syn::parenthesized!` creates a ParseBuffer that applies syn's
+            // own validation, which may reject valid Rust expressions. Use
+            // `cursor.group()` to extract raw token trees instead.
+            let cond = if input.peek(syn::token::Paren) {
+                let group: proc_macro2::TokenStream = input.step(|cursor| {
+                    if let Some((inner, _span, rest)) =
+                        cursor.group(proc_macro2::Delimiter::Parenthesis)
+                    {
+                        Ok((inner.token_stream(), rest))
+                    } else {
+                        Err(cursor.error("expected parenthesized cond expression"))
+                    }
+                })?;
+                Some(unwrap_paren_group(group))
+            } else {
+                None
+            };
+            variants.push(EventVariantEntry { name, cond });
             if !input.is_empty() {
                 let _: syn::Token![,] = input.parse()?;
             }
@@ -24,21 +57,66 @@ impl Parse for EventVariants {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+/// Unwraps a single outer parenthesized group from a token stream.
+///
+/// When users wrap a cond expression in extra parens (e.g., `(expr)`), this
+/// strips one layer so the generated `EventPayload::Registration(expr)` is
+/// free of unnecessary parens and avoids `unused_parens` warnings.
+fn unwrap_paren_group(ts: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    let mut iter = ts.into_iter();
+    match iter.next() {
+        Some(proc_macro2::TokenTree::Group(g))
+            if g.delimiter() == proc_macro2::Delimiter::Parenthesis && iter.next().is_none() =>
+        {
+            g.stream()
+        }
+        Some(tok) => {
+            let mut out = proc_macro2::TokenStream::new();
+            out.extend(std::iter::once(tok));
+            out.extend(iter);
+            out
+        }
+        None => proc_macro2::TokenStream::new(),
+    }
+}
+
+#[derive(Debug, Clone)]
 enum OnEventAttr {
     /// `#[on_event]` — no arguments, receive all events
     All,
     /// `#[on_event(Variant1, Variant2, ...)]` — register for specific event variants.
     /// Each entry carries the `EventVariantInfo` computed at parse time, so the
-    /// generate phase can build the dispatch without re-querying the lookup table.
-    Filtered(Vec<(Ident, EventVariantInfo)>),
+    /// generate phase can build the dispatch without re-querying the lookup table,
+    /// plus an optional cond expression used for `EventPayload::Registration(...)` at
+    /// registration time (falls back to `Default::default()` when omitted).
+    Filtered(Vec<(Ident, EventVariantInfo, Option<TokenStream>)>),
 }
 
-/// Identifies the strongly-typed payload (`__data`) type for an `Event` variant.
+// Manual `PartialEq` — `TokenStream` doesn't implement `PartialEq`, so we
+// compare cond as `to_string()`.
+impl PartialEq for OnEventAttr {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::All, Self::All) => true,
+            (Self::Filtered(a), Self::Filtered(b)) => {
+                a.len() == b.len()
+                    && a.iter().zip(b).all(|(a, b)| {
+                        a.0 == b.0
+                            && a.1 == b.1
+                            && a.2.as_ref().map(|ts| ts.to_string())
+                                == b.2.as_ref().map(|ts| ts.to_string())
+                    })
+            }
+            _ => false,
+        }
+    }
+}
+
+/// Identifies the strongly-typed payload (`ctx`) type for an `Event` variant.
 /// Each variant of this enum corresponds to a distinct `D` type in
 /// `EventPayload<C, D>`. The macro uses this at parse time (never in generated
 /// code) to ensure all variants in a single `#[on_event(...)]` share the same
-/// handler signature — a single handler fn cannot receive different `__data` types.
+/// handler signature — a single handler fn cannot receive different `ctx` types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum CtxTy {
     /// The payload type is `()` — no useful data, only the event kind matters.
@@ -325,13 +403,13 @@ fn parse_plugin_module(mod_item: &mut ItemMod) -> syn::Result<ParsedPlugin> {
                         } else {
                             let variants: EventVariants =
                                 syn::parse2(tokens).map_err(|e| syn::Error::new(attr_span, e))?;
-                            for v in &variants.variants {
-                                if event_variant_info(v).is_none() {
+                            for entry in &variants.variants {
+                                if event_variant_info(&entry.name).is_none() {
                                     return Err(syn::Error::new(
                                         attr_span,
                                         format_args!(
                                             "unknown event variant `{v}` in `#[on_event(...)]`; it is not a variant of `cosmox_api::event::Event`",
-                                            v = v,
+                                            v = entry.name,
                                         ),
                                     ));
                                 }
@@ -340,18 +418,19 @@ fn parse_plugin_module(mod_item: &mut ItemMod) -> syn::Result<ParsedPlugin> {
                             // handler fn, so their handler signatures must match: same
                             // handle list AND same payload (`ctx`) type. Check each
                             // separately so the error names the actual mismatch.
-                            let base = event_variant_info(&variants.variants[0])
+                            let base_name = &variants.variants[0].name;
+                            let base = event_variant_info(base_name)
                                 .expect("variant already validated above");
-                            for v in &variants.variants[1..] {
-                                let info =
-                                    event_variant_info(v).expect("variant already validated above");
+                            for entry in &variants.variants[1..] {
+                                let info = event_variant_info(&entry.name)
+                                    .expect("variant already validated above");
                                 if !same_handles(&base.context, &info.context) {
                                     return Err(syn::Error::new(
                                         attr_span,
                                         format_args!(
                                             "event variants `{first}` and `{second}` have incompatible handler signatures (different context handles) in a single `#[on_event(...)]`; declare them with separate `#[on_event({first})]` / `#[on_event({second})]` attributes instead",
-                                            first = variants.variants[0],
-                                            second = v,
+                                            first = base_name,
+                                            second = entry.name,
                                         ),
                                     ));
                                 }
@@ -360,23 +439,24 @@ fn parse_plugin_module(mod_item: &mut ItemMod) -> syn::Result<ParsedPlugin> {
                                         attr_span,
                                         format_args!(
                                             "event variants `{first}` and `{second}` have incompatible handler signatures (different payload type: expected `{expected}`, got `{actual}`) in a single `#[on_event(...)]`; declare them with separate `#[on_event({first})]` / `#[on_event({second})]` attributes instead",
-                                            first = variants.variants[0],
-                                            second = v,
+                                            first = base_name,
+                                            second = entry.name,
                                             expected = base.ctx_ty,
                                             actual = info.ctx_ty,
                                         ),
                                     ));
                                 }
                             }
-                            let filtered: Vec<(Ident, EventVariantInfo)> = variants
-                                .variants
-                                .into_iter()
-                                .map(|v| {
-                                    let info = event_variant_info(&v)
-                                        .expect("variant already validated above");
-                                    (v, info)
-                                })
-                                .collect();
+                            let filtered: Vec<(Ident, EventVariantInfo, Option<TokenStream>)> =
+                                variants
+                                    .variants
+                                    .into_iter()
+                                    .map(|entry| {
+                                        let info = event_variant_info(&entry.name)
+                                            .expect("variant already validated above");
+                                        (entry.name, info, entry.cond)
+                                    })
+                                    .collect();
                             OnEventAttr::Filtered(filtered)
                         };
 
@@ -422,7 +502,7 @@ fn parse_plugin_module(mod_item: &mut ItemMod) -> syn::Result<ParsedPlugin> {
                                 // `#[on_event(...)]` functions, so we do not reject
                                 // duplicates here. Record every variant so the
                                 // All/Filtered mutual-exclusion check above still works.
-                                for (v, _) in variants {
+                                for (v, _, _) in variants {
                                     seen_on_event_filtered.push(v.clone());
                                 }
                             }
@@ -450,6 +530,34 @@ fn parse_plugin_module(mod_item: &mut ItemMod) -> syn::Result<ParsedPlugin> {
         module_tokens,
         annotated,
     })
+}
+
+fn cond_type_path(variant: &Ident) -> Option<TokenStream> {
+    let name = variant.to_string();
+    let ty = match name.as_str() {
+        "OnMetadataRawTreeReady" => "OnMetadataRawTreeReadyEventCond",
+        "OnMetadataLocalTreeReady" => "OnMetadataLocalTreeReadyEventCond",
+        "OnServerError" => "OnServerErrorEventCond",
+        _ => return None,
+    };
+    let ty_ident = Ident::new(ty, Span::call_site());
+    Some(quote! { cosmox_api::event::payloads:: #ty_ident })
+}
+
+/// If `cond` is a braced struct literal `{ field: expr, ... }`, prepend the
+/// fully-qualified cond type name so it becomes a valid struct expression
+/// (e.g. `{ level: "error".into() }` → `OnServerErrorEventCond { ... }`).
+/// Otherwise return `cond` unchanged.
+fn expand_cond(variant: &Ident, cond: &TokenStream) -> TokenStream {
+    let mut iter = cond.clone().into_iter();
+    let is_braced = matches!(
+        iter.next(),
+        Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Brace && iter.next().is_none()
+    );
+    if is_braced && let Some(ty) = cond_type_path(variant) {
+        return quote! { #ty #cond };
+    }
+    cond.clone()
 }
 
 fn generate_plugin(
@@ -491,7 +599,7 @@ fn generate_plugin(
     let on_event_all = on_events
         .iter()
         .find(|(_, attr)| matches!(attr, OnEventAttr::All));
-    let on_event_filtered: Vec<(Ident, Vec<(Ident, EventVariantInfo)>)> = on_events
+    let on_event_filtered: Vec<FilteredGroup> = on_events
         .iter()
         .filter_map(|(n, attr)| match attr {
             OnEventAttr::Filtered(v) => Some((n.clone(), v.clone())),
@@ -547,29 +655,35 @@ fn generate_plugin(
     };
 
     // Build event registration statements for #[on_event(Variant, ...)].
-    // A variant may be declared by multiple handlers, so we register each
-    // distinct variant only once.
+    // Register each unique (variant, cond) pair once so handlers with different
+    // filter conds for the same variant are all registered with the host.
     let registration_stmts = if on_event_filtered.is_empty() {
         quote! {}
     } else {
-        let mut seen: Vec<Ident> = Vec::new();
+        let mut seen: Vec<(String, String)> = Vec::new();
         let reg_calls: Vec<TokenStream> = on_event_filtered
             .iter()
             .flat_map(|(_, variants)| variants)
-            .filter(|(v, _)| {
-                if seen.iter().any(|s| s == v) {
-                    false
-                } else {
-                    seen.push(v.clone());
+            .filter(|(v, _, cond)| {
+                let key = (
+                    v.to_string(),
+                    cond.as_ref().map(|ts| ts.to_string()).unwrap_or_default(),
+                );
+                if !seen.contains(&key) {
+                    seen.push(key);
                     true
+                } else {
+                    false
                 }
             })
-            .map(|(v, _)| {
+            .map(|(v, _, cond)| {
+                let reg_cond = cond
+                    .as_ref()
+                    .map(|ts| expand_cond(v, ts))
+                    .unwrap_or_else(|| quote! { ::std::default::Default::default() });
                 quote! {
                     cosmox_api::event::Event::#v(
-                        cosmox_api::event::EventPayload::Registration(
-                            ::std::default::Default::default(),
-                        ),
+                        cosmox_api::event::EventPayload::Registration(#reg_cond),
                     ).register().expect(
                         concat!("failed to register ", stringify!(#v), " event listener"),
                     );
@@ -616,55 +730,70 @@ fn generate_plugin(
     // `#[on_event]` (All): forward the raw bytes + EventContext unchanged.
     //
     // `#[on_event(Variant, ...)]` (filtered): decode the payload, match the
-    // variant, unpack the strongly-typed `EventPayload::Dispatch { cond, data }` (and, for
-    // handle-bearing events, the `EventContext` handles), then call **every**
-    // handler that declared this variant. The same variant may be handled by
-    // multiple `#[on_event(...)]` functions, so all of them are invoked in
-    // declaration order; the first non-`Ok` result short-circuits.
-    // Non-matching events / decode failures / context mismatches fall through
-    // to `PluginResult::Ok` with a log line.
+    // variant, unpack the strongly-typed `EventPayload::Dispatch { cond, data }`
+    // (and, for handle-bearing events, the `EventContext` handles), then call
+    // **every** handler whose cond matches the dispatch cond. The same variant
+    // may be handled by multiple `#[on_event(...)]` functions, so all matching
+    // handlers are invoked in declaration order; the first non-`Ok` result
+    // short-circuits. Handlers without a cond expression are always called.
     let on_event_body = if let Some((all_fn, _)) = on_event_all {
         quote! { #mod_path::#all_fn(event, event_context) }
     } else if !on_event_filtered.is_empty() {
         // Map each variant to the list of handler fns that declared it,
-        // carrying the EventVariantInfo directly so the dispatch builder
-        // doesn't need a second lookup.
-        let mut variant_handlers: Vec<(Ident, Vec<Ident>, EventVariantInfo)> = Vec::new();
+        // carrying the EventVariantInfo and each handler's optional cond
+        // expression directly so the dispatch builder can route by cond.
+        let mut variant_handlers: Vec<VariantHandlerGroup> = Vec::new();
         for (fn_name, variants) in &on_event_filtered {
-            for (v, info) in variants {
+            for (v, info, cond) in variants {
                 match variant_handlers.iter_mut().find(|(vv, _, _)| vv == v) {
-                    Some((_, fns, _)) => fns.push(fn_name.clone()),
-                    None => variant_handlers.push((v.clone(), vec![fn_name.clone()], info.clone())),
+                    Some((_, fns, _)) => fns.push((fn_name.clone(), cond.clone())),
+                    None => variant_handlers.push((
+                        v.clone(),
+                        vec![(fn_name.clone(), cond.clone())],
+                        info.clone(),
+                    )),
                 }
             }
         }
 
         let dispatch_arms: Vec<TokenStream> = variant_handlers
             .iter()
-            .map(|(v, fns, info)| {
-                // The context (handle) unpacking is identical for every handler
-                // of this variant, so we do it ONCE per variant and reuse the
-                // handles for all handler calls. Each handler receives its own
-                // clone of `__data` to avoid a use-after-move.
-                let calls: Vec<TokenStream> = fns
+            .map(|(v, handlers, info)| {
+                // Build per-handler call stmts. Handlers with a cond expression
+                // are only called when the dispatch cond matches. Handlers
+                // without cond are always called (unconditional).
+                let calls: Vec<TokenStream> = handlers
                     .iter()
-                    .map(|fn_name| match &info.context {
-                        Some((_ctx_pat, handles)) => quote! {
-                            let __r = #mod_path::#fn_name(__data.clone(), #(#handles),*);
-                            if let cosmox_api::api::bindings::exports::cosmox::plugin::host_notifier::PluginResult::Ok = __r {
-                                // ok, continue to next handler
-                            } else {
-                                return __r;
+                    .map(|(fn_name, cond)| {
+                        let call = match &info.context {
+                            Some((_ctx_pat, handles)) => quote! {
+                                let __r = #mod_path::#fn_name(__data.clone(), #(#handles),*);
+                                if let cosmox_api::api::bindings::exports::cosmox::plugin::host_notifier::PluginResult::Ok = __r {
+                                    // ok, continue to next handler
+                                } else {
+                                    return __r;
+                                }
+                            },
+                            None => quote! {
+                                let __r = #mod_path::#fn_name(__data.clone());
+                                if let cosmox_api::api::bindings::exports::cosmox::plugin::host_notifier::PluginResult::Ok = __r {
+                                    // ok, continue to next handler
+                                } else {
+                                    return __r;
+                                }
+                            },
+                        };
+                        // Wrap in cond check if user provided a cond expression.
+                        if let Some(cond_ts) = cond {
+                            let exp_cond_ts = expand_cond(v, cond_ts);
+                            quote! {
+                                if (#exp_cond_ts).matches(&__cond) {
+                                    #call
+                                }
                             }
-                        },
-                        None => quote! {
-                            let __r = #mod_path::#fn_name(__data.clone());
-                            if let cosmox_api::api::bindings::exports::cosmox::plugin::host_notifier::PluginResult::Ok = __r {
-                                // ok, continue to next handler
-                            } else {
-                                return __r;
-                            }
-                        },
+                        } else {
+                            call
+                        }
                     })
                     .collect();
                 // Wrap the calls in a single context-unpacking block (per variant).
@@ -750,6 +879,8 @@ fn generate_plugin(
         #module
 
         mod __plugin {
+            use cosmox_api::event::cond::EventCond;
+
             pub(crate) struct Plugin;
 
             impl cosmox_api::api::bindings::Guest for Plugin {
@@ -926,6 +1057,7 @@ mod tests {
             #module
 
             mod __plugin {
+                use cosmox_api::event::cond::EventCond;
                 pub(crate) struct Plugin;
 
                 impl cosmox_api::api::bindings::Guest for Plugin {
@@ -1585,7 +1717,7 @@ mod tests {
             s.contains(
                 "super :: test_mod :: a (__data . clone () , metadata_handle , path_mapping_handle)"
             ),
-            "should call handler with __data + &handles: {s}"
+            "should call handler with data + &handles: {s}"
         );
         assert!(
             s.contains("log :: warn !"),
@@ -1629,7 +1761,7 @@ mod tests {
         );
         assert!(
             s.contains("super :: test_mod :: a (__data . clone ())"),
-            "both arms should call the same handler with __data: {s}"
+            "both arms should call the same handler with data: {s}"
         );
         let reg_count = s.matches("register ()").count();
         assert!(
@@ -1643,7 +1775,7 @@ mod tests {
         // `OnScanComplete` is a handle-less variant, so the generated arm must:
         //  - discard the fixed `event_context` parameter (otherwise the plugin
         //    would warn `unused variable: event_context`), and
-        //  - call the handler with `__data` only, with no `EventContext` variant match.
+        //  - call the handler with `ctx` only, with no `EventContext` variant match.
         let input = r#"
             #[on_event(OnScanComplete)]
             fn a() {}
@@ -1662,7 +1794,7 @@ mod tests {
         );
         assert!(
             s.contains("super :: test_mod :: a (__data . clone ())"),
-            "unit event arm should call handler with __data only: {s}"
+            "unit event arm should call handler with data only: {s}"
         );
         assert!(
             !s.contains("EventContext ::"),
