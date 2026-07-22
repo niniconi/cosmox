@@ -105,7 +105,7 @@ jsonwebtoken = { version = "10.2.0", default-features = false }
 log = "0.4.22"
 lru = "0.16.3"
 migration = { path = "crates/migration" }
-mlua = "0.11.6"
+mlua = "0.12.0"
 moka = "0.12.10"
 notify = "8.0.0"
 otp = "0.2.0"
