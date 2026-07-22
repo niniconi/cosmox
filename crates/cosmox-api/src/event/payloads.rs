@@ -8,7 +8,7 @@ pub struct OnMetadataRawTreeReadyEventContext {
     pub r#type: String,
 }
 
-#[derive(Debug, Default, Encode, Decode)]
+#[derive(Debug, Default, Clone, Encode, Decode, PartialEq)]
 pub struct OnMetadataRawTreeReadyEventCond {
     /// library type
     pub r#type: Vec<String>,
@@ -24,7 +24,7 @@ pub struct OnMetadataLocalTreeReadyEventContext {
     pub from_plugins: Vec<String>,
 }
 
-#[derive(Debug, Default, Encode, Decode)]
+#[derive(Debug, Default, Clone, Encode, Decode, PartialEq)]
 pub struct OnMetadataLocalTreeReadyEventCond {
     /// library type
     pub r#type: Vec<String>,
@@ -37,7 +37,7 @@ pub struct OnServerErrorEventContext {
     pub errors: Vec<String>,
 }
 
-#[derive(Debug, Default, Encode, Decode)]
+#[derive(Debug, Default, Clone, Encode, Decode, PartialEq)]
 pub struct OnServerErrorEventCond {
     pub level: String,
 }

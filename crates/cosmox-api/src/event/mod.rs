@@ -7,13 +7,14 @@ use crate::event::payloads::{
     OnServerErrorEventContext,
 };
 
+pub mod cond;
 pub mod payloads;
 
 /// Defines user interactions and system events that can occur in a multimedia management system.
 ///
 /// This enum covers a wide range of events, including user authentication, media file management, playback,
 /// interaction, and various system-level occurrences.
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub enum Event {
     OnMetadataRawTreeReady(
         EventPayload<OnMetadataRawTreeReadyEventCond, OnMetadataRawTreeReadyEventContext>,
@@ -38,7 +39,7 @@ pub enum Event {
     OnServerError(EventPayload<OnServerErrorEventCond, OnServerErrorEventContext>),
 }
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub enum EventPayload<C, D> {
     /// The filter condition for plugin event registration;
     /// the event is triggered only when the condition is met.
