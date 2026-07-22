@@ -8,6 +8,7 @@ use std::{
 use anyhow::{Result, anyhow};
 use bytes::Bytes;
 use common::default_constants::ascii_letters_number_separators;
+use cosmox_api::event::cond::Cond;
 use cosmox_configuration::Configuration;
 use futures_util::StreamExt;
 use lru::LruCache;
@@ -27,7 +28,8 @@ pub use super::plugin_loader::bindings::cosmox::plugin::cosmox_types as bindings
 use crate::{
     plugin_lifecycle::plugin_wasm_lifecycle,
     plugin_loader::{
-        ComponentRunStates, CosmoxPluginData, PluginLoadError, PluginLoader, bindings,
+        ComponentRunStates, CondRegistration, CosmoxPluginData, PluginLoadError, PluginLoader,
+        bindings,
     },
     types::{LazyLoadPlugin, PluginName, PluginWasmId, PluginWasmName, WasmComponent},
 };
@@ -734,34 +736,56 @@ impl PluginManager {
         log::debug!("notify all message by event{event:?}");
         let current_task_name = "notify event";
 
-        let (components_for_current_event, engine) = {
+        let dispatch_cond = Cond::from(event.as_ref().clone());
+        let event_key = event.into_key();
+
+        // Acquire lock briefly: get engine + matching registrations
+        let (matching_registrations, engine) = {
             let plugin_manager = PluginManager::get_plugin_manager();
             let engine = plugin_manager.engine.clone();
-            let components_for_current_event = match plugin_manager
+            let registrations = match plugin_manager
                 .plugin_loader
                 .event_map_to_wasm_components
-                .get(&event.into_key())
+                .get(&event_key)
             {
-                Some(event_map_to_wasm_components) => event_map_to_wasm_components.clone(),
+                Some(regs) => regs,
                 None => return Err(anyhow!("Not found any event listeners")),
             };
-            (components_for_current_event, engine)
+
+            let matching: Vec<CondRegistration> = registrations
+                .iter()
+                .filter(|reg| reg.cond.matches(&dispatch_cond))
+                .cloned()
+                .collect();
+            (matching, engine)
         };
+
+        if matching_registrations.is_empty() {
+            log::debug!("No cond-matching listeners for event {event:?}");
+            return Ok(());
+        }
 
         let payload = match event.encode() {
             Ok(payload) => payload,
             Err(err) => return Err(anyhow!("Event encode error by {err}")),
         };
 
-        // let mut join_handles = Vec::with_capacity(components_for_current_event.len());
-        for current_wasm_compoent in &components_for_current_event {
-            // let current_wasm_compoent = current_wasm_compoent.clone();
-            let task_service_key = current_wasm_compoent.id;
+        for registration in &matching_registrations {
+            let wasm_id = registration.wasm_id;
             let payload = payload.clone();
             let engine = engine.clone();
 
-            // let handle = tokio::task::spawn_blocking(move || {
-            // let payload = payload;
+            let current_wasm_compoent = {
+                let plugin_manager = PluginManager::get_plugin_manager();
+                plugin_manager.plugin_loader.get_wasm_compoent(wasm_id)
+            };
+
+            let Some(current_wasm_compoent) = current_wasm_compoent else {
+                log::error!("Wasm component {wasm_id} not found for event dispatch");
+                continue;
+            };
+
+            let task_service_key = current_wasm_compoent.id;
             let current_thread = std::thread::current();
             let current_thread_id = current_thread.id();
             let current_thread_name = current_thread.name().unwrap_or("unnamed");
@@ -837,17 +861,20 @@ impl PluginManager {
     pub fn bind_event_for_wasm(
         event: cosmox_api::event::EventKey,
         wasm_id: PluginWasmId,
+        cond: Cond,
     ) -> Result<()> {
         let mut plugin_manager = PluginManager::get_plugin_manager_mut();
-        if let Some(wasm_component) = plugin_manager.plugin_loader.get_wasm_compoent(wasm_id) {
-            let wasm_component = wasm_component.clone();
-
+        if plugin_manager
+            .plugin_loader
+            .get_wasm_compoent(wasm_id)
+            .is_some()
+        {
             plugin_manager
                 .plugin_loader
                 .event_map_to_wasm_components
                 .entry(event)
                 .or_default()
-                .push(wasm_component);
+                .push(CondRegistration { wasm_id, cond });
             Ok(())
         } else {
             Err(anyhow!("Not found wasm component by id {wasm_id}"))
@@ -870,14 +897,15 @@ impl PluginManager {
     pub fn unbind_event_from_wasm(
         event: cosmox_api::event::EventKey,
         wasm_id: PluginWasmId,
+        cond: Cond,
     ) -> Result<()> {
         let mut plugin_manager = PluginManager::get_plugin_manager_mut();
         plugin_manager
             .plugin_loader
             .event_map_to_wasm_components
             .entry(event)
-            .and_modify(|x| {
-                x.retain(|wasm_component| wasm_component.id != wasm_id);
+            .and_modify(|regs| {
+                regs.retain(|reg| reg.wasm_id != wasm_id || reg.cond != cond);
             });
         Ok(())
     }

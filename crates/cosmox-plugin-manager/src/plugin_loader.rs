@@ -16,6 +16,7 @@ use wasmtime_wasi::{WasiCtx, WasiCtxView, WasiView};
 use bindings::cosmox::plugin::context as bindings_context;
 use bindings::cosmox::plugin::cosmox_api as bindings_cosmox_api;
 use bindings::cosmox::plugin::cosmox_types as bindings_cosmox_types;
+use cosmox_api::event::cond::Cond;
 use cosmox_api::{self, event::Event};
 use wasmtime_wasi_http::{WasiHttpCtx, WasiHttpView};
 
@@ -137,7 +138,7 @@ pub struct PluginLoader {
     wasm_components: Vec<Option<WasmComponent>>,
     wasm_components_ids_bitmap: [u64; PLUGIN_WASM_ID_BITMAP_SIZE],
 
-    pub event_map_to_wasm_components: HashMap<cosmox_api::event::EventKey, Vec<WasmComponent>>,
+    pub event_map_to_wasm_components: HashMap<cosmox_api::event::EventKey, Vec<CondRegistration>>,
 
     pub plugin_enable_count: usize,
 
@@ -187,6 +188,12 @@ pub struct CosmoxPluginData {
     pub plugin_id: PluginId,
     pub wasm_id: PluginWasmId,
     pub name: PluginWasmName,
+}
+
+#[derive(Debug, Clone)]
+pub struct CondRegistration {
+    pub wasm_id: PluginWasmId,
+    pub cond: Cond,
 }
 
 impl bindings_context::Host for ComponentRunStates {}
@@ -246,9 +253,11 @@ impl bindings_cosmox_api::Host for CosmoxPluginData {
     ) -> Result<(), bindings_cosmox_types::ListenerRegistrationError> {
         match Event::decode(event) {
             Ok(event) => {
+                let cond = Cond::from(event.clone());
+                let event_key = event.into_key();
                 let event = Arc::new(event);
 
-                if let Err(err) = PluginManager::bind_event_for_wasm(event.into_key(), self.wasm_id)
+                if let Err(err) = PluginManager::bind_event_for_wasm(event_key, self.wasm_id, cond)
                 {
                     log::error!("Failed to bind event for wasm {}: {err}", self.wasm_id);
                     return Err(bindings_cosmox_api::ListenerRegistrationError::Unknown);
@@ -282,10 +291,11 @@ impl bindings_cosmox_api::Host for CosmoxPluginData {
     ) -> std::result::Result<(), bindings_cosmox_api::ListenerRegistrationError> {
         match Event::decode(event) {
             Ok(event) => {
-                let event = Arc::new(event);
+                let cond = Cond::from(event.clone());
+                let event_key = event.into_key();
 
                 if let Err(err) =
-                    PluginManager::unbind_event_from_wasm(event.into_key(), self.wasm_id)
+                    PluginManager::unbind_event_from_wasm(event_key, self.wasm_id, cond)
                 {
                     log::error!("Failed to unbind event for wasm {}: {err}", self.wasm_id);
                     return Err(bindings_cosmox_api::ListenerRegistrationError::Unknown);
@@ -450,10 +460,11 @@ impl PluginLoader {
         }
 
         if !wasm_ids.is_empty() {
-            self.event_map_to_wasm_components.retain(|_, components| {
-                components.retain(|wc| !wasm_ids.contains(&wc.id));
-                !components.is_empty()
-            });
+            self.event_map_to_wasm_components
+                .retain(|_, registrations| {
+                    registrations.retain(|reg| !wasm_ids.contains(&reg.wasm_id));
+                    !registrations.is_empty()
+                });
         }
 
         self.plugin_names.remove(plugin);
