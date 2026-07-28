@@ -320,16 +320,23 @@ pub async fn store_metadata(
                 log::error!("Failed to create metadata subdirectory {:?}: {err}", path);
             }
 
-            let file = File::create(metadata_file_path).unwrap();
-            let mut writer = BufWriter::new(file);
-
-            let inner_futures = {
+            // Scope the file descriptor — drop BufWriter + File BEFORE recursing
+            // into children to avoid accumulating N open fds for an N-level tree.
+            {
+                let file = File::create(&metadata_file_path).unwrap_or_else(|err| {
+                    panic!("Failed to create {metadata_file_path:?}: {err}");
+                });
+                let mut writer = BufWriter::new(file);
                 let mut metadata = metadata.lock().unwrap();
                 metadata.rid = rid;
                 if let Err(err) = metadata.encode_no_child_into_std_write(&mut writer) {
                     log::error!("Failed to encode metadata: {err}");
                 }
+                // writer + file dropped here → fd released
+            }
 
+            let inner_futures = {
+                let metadata = metadata.lock().unwrap();
                 metadata
                     .sub_metadatas
                     .iter()
