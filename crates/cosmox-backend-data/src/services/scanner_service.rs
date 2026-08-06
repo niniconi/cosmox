@@ -4,10 +4,10 @@ use std::{
     io::BufWriter,
     path::PathBuf,
     pin::Pin,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
-use cosmox_api::metadata::Metadata;
+use cosmox_api::metadata::MetadataNode;
 use cosmox_configuration::{Configuration, ScannerConfiguration};
 use futures_util::future::{join_all, try_join_all};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait, QueryFilter};
@@ -224,7 +224,7 @@ pub async fn prepare_context_information(
 /// store metadata tree to disk.
 pub async fn store_metadata(
     lid: u64,
-    metadata: Arc<Mutex<Metadata<()>>>,
+    metadata: MetadataNode,
     context: ScannerContext<'_>,
 ) -> Result<(), ScannerError> {
     let db = get_db_connection().await;
@@ -245,7 +245,7 @@ pub async fn store_metadata(
 
     fn inner(
         lid: u64,
-        metadata: Arc<Mutex<Metadata<()>>>,
+        metadata: MetadataNode,
         path: PathBuf,
         context: ScannerContext,
         db: Arc<DatabaseConnection>,
@@ -432,7 +432,7 @@ async fn store_tag(group_label: &str, label: &str) -> Result<Vec<u64>, ScannerEr
 }
 
 async fn store_path_mapping(
-    metadata: Arc<Mutex<Metadata<()>>>,
+    metadata: MetadataNode,
     field: &str,
     url: &Url,
 ) -> Result<(), ScannerError> {

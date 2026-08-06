@@ -37,6 +37,10 @@ pub struct Metadata<T> {
     pub extend: HashMap<String, String>,
 }
 
+/// Shared handle to a `Metadata<()>` node: the concrete node type used
+/// throughout the tree (children, parents, cache entries).
+pub type MetadataNode = Arc<Mutex<Metadata<()>>>;
+
 impl<T> Debug for Metadata<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Metadata")

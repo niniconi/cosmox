@@ -3,10 +3,10 @@ use std::{
     fs::{self, File},
     io::BufReader,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
-use cosmox_api::metadata::Metadata;
+use cosmox_api::metadata::{Metadata, MetadataNode};
 use cosmox_configuration::Configuration;
 use sea_orm::EntityTrait;
 use serde::Deserialize;
@@ -34,13 +34,13 @@ pub struct MetadataQueryRequest {
 pub async fn load_metadata<P>(
     path: P,
     max_depth: usize,
-) -> Result<Option<Arc<Mutex<Metadata<()>>>>, MetadataError>
+) -> Result<Option<MetadataNode>, MetadataError>
 where
     P: AsRef<Path> + Debug,
 {
     let path = path.as_ref().to_path_buf();
     let mut root = None;
-    let mut dirs = vec![(path, 1, None::<Arc<Mutex<Metadata<()>>>>)];
+    let mut dirs = vec![(path, 1, None::<MetadataNode>)];
 
     while !dirs.is_empty()
         && let Some((mut path, depth, parent)) = dirs.pop()
@@ -95,7 +95,7 @@ where
 
 pub async fn query_metadata(
     query: Arc<MetadataQueryRequest>,
-) -> Result<Arc<Mutex<Metadata<()>>>, MetadataError> {
+) -> Result<MetadataNode, MetadataError> {
     let db = get_db_connection().await;
     let metadata_index = metadata_indexes::Entity::find_by_id(query.root_node)
         .one(db.as_ref())

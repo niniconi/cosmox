@@ -1,6 +1,6 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use cosmox_api::metadata::Metadata;
+use cosmox_api::metadata::MetadataNode;
 use cosmox_backend_data::services::metadata_service;
 
 use crate::{
@@ -13,7 +13,7 @@ pub use cosmox_backend_data::services::metadata_service::{MetadataError, Metadat
 pub async fn get(
     ctx: &mut Context<'_>,
     rid: u64,
-) -> Result<Message<Arc<Mutex<Metadata<()>>>>, ApiError<MetadataError>> {
+) -> Result<Message<MetadataNode>, ApiError<MetadataError>> {
     ctx.access_ctx.endpoint = api::Endpoint::GetMetadata { rid };
     let payload = Arc::new(MetadataQueryRequest {
         root_node: rid,
@@ -26,7 +26,7 @@ pub async fn get(
 pub async fn query(
     ctx: &mut Context<'_>,
     payload: Arc<MetadataQueryRequest>,
-) -> Result<Message<Arc<Mutex<Metadata<()>>>>, ApiError<MetadataError>> {
+) -> Result<Message<MetadataNode>, ApiError<MetadataError>> {
     ctx.access_ctx.endpoint = api::Endpoint::QueryMetadata;
     Message::from_service(ctx, metadata_service::query_metadata(payload)).await
 }

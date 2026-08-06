@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::{Result, anyhow};
-use cosmox_api::metadata::Metadata;
+use cosmox_api::metadata::{Metadata, MetadataNode};
 
 use url::Url;
 use wasmtime::component::Resource;
@@ -21,13 +21,13 @@ use crate::plugin_loader::{
 /// The `parent` pointer turns `find_with_parent` into an O(1) index lookup
 /// instead of a full-tree BFS on every move/delete.
 struct CachedNode {
-    node: Arc<Mutex<Metadata<()>>>,
-    parent: Option<Arc<Mutex<Metadata<()>>>>,
+    node: MetadataNode,
+    parent: Option<MetadataNode>,
 }
 
 #[derive(Default)]
 pub struct MetadataContext {
-    pub inner: Option<Arc<Mutex<Metadata<()>>>>,
+    pub inner: Option<MetadataNode>,
     pub count: Arc<AtomicU64>,
     caches: HashMap<u64, CachedNode>,
 }
@@ -35,11 +35,7 @@ pub struct MetadataContext {
 impl MetadataContext {
     /// Find `segment` among the direct children of `current` by name,
     /// warming the cache for the resolved rid.
-    fn find_child(
-        &mut self,
-        current: &Arc<Mutex<Metadata<()>>>,
-        segment: &str,
-    ) -> Option<Arc<Mutex<Metadata<()>>>> {
+    fn find_child(&mut self, current: &MetadataNode, segment: &str) -> Option<MetadataNode> {
         let children = {
             let guard = current.lock().unwrap();
             guard.sub_metadatas.clone()
@@ -61,7 +57,7 @@ impl MetadataContext {
 
     /// Resolve a `/`-separated name chain against the current tree, starting
     /// from the root's direct children.
-    pub fn query_by_path(&mut self, path: String) -> Option<Arc<Mutex<Metadata<()>>>> {
+    pub fn query_by_path(&mut self, path: String) -> Option<MetadataNode> {
         let root = self.inner.as_ref()?.clone();
         let root_rid = root.lock().unwrap().rid;
         self.caches.insert(
@@ -83,10 +79,7 @@ impl MetadataContext {
 
     /// Resolve the node addressed by `query` — `path` is resolved as a name
     /// chain; `id` falls back to a tree lookup when the cache is cold.
-    fn resolve(
-        &mut self,
-        query: &bindings_context::MetadataQuery,
-    ) -> Option<Arc<Mutex<Metadata<()>>>> {
+    fn resolve(&mut self, query: &bindings_context::MetadataQuery) -> Option<MetadataNode> {
         match query {
             bindings_context::MetadataQuery::Id(id) => {
                 if let Some(entry) = self.caches.get(id) {
@@ -100,10 +93,7 @@ impl MetadataContext {
     }
 
     /// Locate the node with `rid` and its parent (`None` if it's the root).
-    fn find_with_parent(
-        &mut self,
-        rid: u64,
-    ) -> Option<(Arc<Mutex<Metadata<()>>>, Option<Arc<Mutex<Metadata<()>>>>)> {
+    fn find_with_parent(&mut self, rid: u64) -> Option<(MetadataNode, Option<MetadataNode>)> {
         if let Some(entry) = self.caches.get(&rid) {
             return Some((entry.node.clone(), entry.parent.clone()));
         }
@@ -330,7 +320,7 @@ impl bindings_context::HostMetadataHandle for ComponentRunStates {
         let parent_metadata = context.resolve(&query);
         match parent_metadata {
             Some(parent_metadata) => {
-                let metadata_data: Arc<Mutex<Metadata<()>>> =
+                let metadata_data: MetadataNode =
                     Metadata::bindecode_set_id(data, context.count.fetch_add(1, Ordering::Relaxed))
                         .unwrap();
 

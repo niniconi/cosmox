@@ -12,7 +12,7 @@ use cosmox_api::{
             OnMetadataRawTreeReadyEventCond, OnMetadataRawTreeReadyEventContext,
         },
     },
-    metadata::{Metadata, MetadataType},
+    metadata::{Metadata, MetadataNode, MetadataType},
 };
 use cosmox_backend_data::services::scanner_service::{self, store_metadata};
 use cosmox_plugin_manager::{Resource, plugin_manager::bindings_context};
@@ -42,7 +42,7 @@ pub struct ScannerRuntimeContext {
 // static SCANNER_STATE: LazyLock<RwLock<Vec<ScannerRuntimeContext>>> = LazyLock::new(|| {
 //     RwLock::new(Vec::with_capacity(32))
 // });
-type GeneratedMetadataTree = (Arc<Mutex<Metadata<()>>>, u64);
+type GeneratedMetadataTree = (MetadataNode, u64);
 
 pub async fn start(selected: SelectedLibraries) -> Result<(), ScannerError> {
     let contexts = scanner_service::prepare_context_information(selected.clone()).await?;
