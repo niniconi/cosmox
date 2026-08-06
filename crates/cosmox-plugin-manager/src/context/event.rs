@@ -16,11 +16,20 @@ use crate::plugin_loader::{
     ComponentRunStates, bindings::cosmox::plugin::context as bindings_context,
 };
 
+/// A cached node together with its parent (`None` for the root).
+///
+/// The `parent` pointer turns `find_with_parent` into an O(1) index lookup
+/// instead of a full-tree BFS on every move/delete.
+struct CachedNode {
+    node: Arc<Mutex<Metadata<()>>>,
+    parent: Option<Arc<Mutex<Metadata<()>>>>,
+}
+
 #[derive(Default)]
 pub struct MetadataContext {
     pub inner: Option<Arc<Mutex<Metadata<()>>>>,
     pub count: Arc<AtomicU64>,
-    caches: HashMap<u64, Arc<Mutex<Metadata<()>>>>,
+    caches: HashMap<u64, CachedNode>,
 }
 
 impl MetadataContext {
@@ -40,14 +49,30 @@ impl MetadataContext {
             .find(|x| x.lock().unwrap().name == segment)?
             .clone();
         let rid = child.lock().unwrap().rid;
-        self.caches.insert(rid, child.clone());
+        self.caches.insert(
+            rid,
+            CachedNode {
+                node: child.clone(),
+                parent: Some(current.clone()),
+            },
+        );
         Some(child)
     }
 
     /// Resolve a `/`-separated name chain against the current tree, starting
     /// from the root's direct children.
     pub fn query_by_path(&mut self, path: String) -> Option<Arc<Mutex<Metadata<()>>>> {
-        let mut current = self.inner.as_ref()?.clone();
+        let root = self.inner.as_ref()?.clone();
+        let root_rid = root.lock().unwrap().rid;
+        self.caches.insert(
+            root_rid,
+            CachedNode {
+                node: root.clone(),
+                parent: None,
+            },
+        );
+
+        let mut current = root;
 
         for segment in path.split('/').filter(|s| !s.is_empty()) {
             current = self.find_child(&current, segment)?;
@@ -64,12 +89,10 @@ impl MetadataContext {
     ) -> Option<Arc<Mutex<Metadata<()>>>> {
         match query {
             bindings_context::MetadataQuery::Id(id) => {
-                if let Some(node) = self.caches.get(id).cloned() {
-                    Some(node)
+                if let Some(entry) = self.caches.get(id) {
+                    Some(entry.node.clone())
                 } else {
-                    let (node, _) = self.find_with_parent(*id)?;
-                    self.caches.insert(*id, node.clone());
-                    Some(node)
+                    self.find_with_parent(*id).map(|(node, _)| node)
                 }
             }
             bindings_context::MetadataQuery::Path(path) => self.query_by_path(path.clone()),
@@ -78,9 +101,12 @@ impl MetadataContext {
 
     /// Locate the node with `rid` and its parent (`None` if it's the root).
     fn find_with_parent(
-        &self,
+        &mut self,
         rid: u64,
     ) -> Option<(Arc<Mutex<Metadata<()>>>, Option<Arc<Mutex<Metadata<()>>>>)> {
+        if let Some(entry) = self.caches.get(&rid) {
+            return Some((entry.node.clone(), entry.parent.clone()));
+        }
         let root = self.inner.as_ref()?.clone();
         let mut stack = vec![(root, None)];
         while let Some((node, parent)) = stack.pop() {
@@ -89,6 +115,13 @@ impl MetadataContext {
                 (guard.rid, guard.sub_metadatas.clone())
             };
             if node_rid == rid {
+                self.caches.insert(
+                    rid,
+                    CachedNode {
+                        node: node.clone(),
+                        parent: parent.clone(),
+                    },
+                );
                 return Some((node, parent));
             }
             for child in children {
@@ -183,17 +216,23 @@ impl bindings_context::HostMetadataHandle for ComponentRunStates {
             .get_mut(&context)
             .inspect_err(|err| log::error!("{err}"))?;
 
-        let childs = context
-            .resolve(&query)
-            .map(|x| x.lock().unwrap().sub_metadatas.to_vec());
-
-        match childs {
-            Some(childs) => {
-                let childs = childs
+        match context.resolve(&query) {
+            Some(node) => {
+                let children = {
+                    let guard = node.lock().unwrap();
+                    guard.sub_metadatas.clone()
+                };
+                let childs = children
                     .iter()
-                    .map(|x| {
-                        let rid = x.lock().unwrap().rid;
-                        context.caches.insert(rid, x.clone());
+                    .map(|child| {
+                        let rid = child.lock().unwrap().rid;
+                        context.caches.insert(
+                            rid,
+                            CachedNode {
+                                node: child.clone(),
+                                parent: Some(node.clone()),
+                            },
+                        );
                         rid
                     })
                     .collect::<Vec<_>>();
@@ -267,8 +306,15 @@ impl bindings_context::HostMetadataHandle for ComponentRunStates {
             .sub_metadatas
             .push(node.clone());
 
-        context.caches.insert(target_rid, target_parent.clone());
-        context.caches.insert(node_rid, node);
+        // Re-index `node` under its new parent; `target_parent` was already
+        // indexed by `resolve` above.
+        context.caches.insert(
+            node_rid,
+            CachedNode {
+                node: node.clone(),
+                parent: Some(target_parent.clone()),
+            },
+        );
 
         Ok(())
     }
@@ -294,7 +340,13 @@ impl bindings_context::HostMetadataHandle for ComponentRunStates {
                     .sub_metadatas
                     .push(metadata_data.clone());
                 let new_rid = metadata_data.lock().unwrap().rid;
-                context.caches.insert(new_rid, metadata_data);
+                context.caches.insert(
+                    new_rid,
+                    CachedNode {
+                        node: metadata_data.clone(),
+                        parent: Some(parent_metadata.clone()),
+                    },
+                );
 
                 Ok(new_rid)
             }
