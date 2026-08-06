@@ -24,55 +24,56 @@ pub struct MetadataContext {
 }
 
 impl MetadataContext {
-    pub fn query_by_path(&mut self, path: String) -> Option<Arc<Mutex<Metadata<()>>>> {
-        self.inner.as_ref()?;
-
-        let rid = self.inner.clone().unwrap().lock().unwrap().rid;
-
-        let id_list = path
-            .split('.')
-            .map(|x| x.parse::<u64>().unwrap())
-            .collect::<Vec<_>>();
-
-        let id_list = if let Some(first_id) = id_list.first()
-            && *first_id == rid
-        {
-            &id_list[1..]
-        } else {
-            id_list.as_slice()
+    /// Find `segment` among the direct children of `current` by name,
+    /// warming the cache for the resolved rid.
+    fn find_child(
+        &mut self,
+        current: &Arc<Mutex<Metadata<()>>>,
+        segment: &str,
+    ) -> Option<Arc<Mutex<Metadata<()>>>> {
+        let children = {
+            let guard = current.lock().unwrap();
+            guard.sub_metadatas.clone()
         };
+        let child = children
+            .iter()
+            .find(|x| x.lock().unwrap().name == segment)?
+            .clone();
+        let rid = child.lock().unwrap().rid;
+        self.caches.insert(rid, child.clone());
+        Some(child)
+    }
 
-        let mut current = self.inner.clone().unwrap();
+    /// Resolve a `/`-separated name chain against the current tree, starting
+    /// from the root's direct children.
+    pub fn query_by_path(&mut self, path: String) -> Option<Arc<Mutex<Metadata<()>>>> {
+        let mut current = self.inner.as_ref()?.clone();
 
-        for id in id_list {
-            match self.caches.get(id) {
-                Some(metadata) => current = metadata.clone(),
-                None => {
-                    let metadata = current.lock().unwrap();
-                    let mut tmp = None;
-
-                    if let Some(metadata) = metadata
-                        .sub_metadatas
-                        .iter()
-                        .find(|x| x.lock().unwrap().rid == *id)
-                    {
-                        tmp = Some(metadata.clone());
-                        self.caches.insert(*id, metadata.clone());
-                    }
-
-                    drop(metadata);
-
-                    match tmp {
-                        Some(metadata) => current = metadata,
-                        None => {
-                            return None;
-                        }
-                    }
-                }
-            }
+        for segment in path.split('/').filter(|s| !s.is_empty()) {
+            current = self.find_child(&current, segment)?;
         }
 
         Some(current)
+    }
+
+    /// Resolve the node addressed by `query` — `path` is resolved as a name
+    /// chain; `id` falls back to a tree lookup when the cache is cold.
+    fn resolve(
+        &mut self,
+        query: &bindings_context::MetadataQuery,
+    ) -> Option<Arc<Mutex<Metadata<()>>>> {
+        match query {
+            bindings_context::MetadataQuery::Id(id) => {
+                if let Some(node) = self.caches.get(id).cloned() {
+                    Some(node)
+                } else {
+                    let (node, _) = self.find_with_parent(*id)?;
+                    self.caches.insert(*id, node.clone());
+                    Some(node)
+                }
+            }
+            bindings_context::MetadataQuery::Path(path) => self.query_by_path(path.clone()),
+        }
     }
 
     /// Locate the node with `rid` and its parent (`None` if it's the root).
@@ -98,15 +99,17 @@ impl MetadataContext {
     }
 }
 
-/// Extract the target rid from a `metadata-query` — for `path` this is the
-/// last segment of the dot-separated rid chain.
-fn metadata_query_rid(query: &bindings_context::MetadataQuery) -> Option<u64> {
+/// Resolve the rid addressed by `query` — `path` is a `/`-separated name
+/// chain resolved against the current tree.
+fn metadata_query_rid(
+    context: &mut MetadataContext,
+    query: &bindings_context::MetadataQuery,
+) -> Option<u64> {
     match query {
         bindings_context::MetadataQuery::Id(id) => Some(*id),
-        bindings_context::MetadataQuery::Path(path) => path
-            .rsplit('.')
-            .next()
-            .and_then(|segment| segment.parse::<u64>().ok()),
+        bindings_context::MetadataQuery::Path(path) => context
+            .query_by_path(path.clone())
+            .map(|node| node.lock().unwrap().rid),
     }
 }
 
@@ -129,22 +132,9 @@ impl bindings_context::HostMetadataHandle for ComponentRunStates {
             .get_mut(&context)
             .inspect_err(|err| log::error!("{err}"))?;
 
-        if context.caches.is_empty()
-            && let Some(root) = &context.inner
-        {
-            let rid = root.lock().unwrap().rid;
-            context.caches.insert(rid, root.clone());
-        }
-
-        match query {
-            bindings_context::MetadataQuery::Id(id) => Ok(context
-                .caches
-                .get(&id)
-                .map(|x| x.lock().unwrap().binencode().unwrap())),
-            bindings_context::MetadataQuery::Path(path) => Ok(context
-                .query_by_path(path)
-                .map(|x| x.lock().unwrap().binencode().unwrap())),
-        }
+        Ok(context
+            .resolve(&query)
+            .map(|x| x.lock().unwrap().binencode().unwrap()))
     }
 
     fn query_field(
@@ -158,22 +148,9 @@ impl bindings_context::HostMetadataHandle for ComponentRunStates {
             .get_mut(&context)
             .inspect_err(|err| log::error!("{err}"))?;
 
-        if context.caches.is_empty()
-            && let Some(root) = &context.inner
-        {
-            let rid = root.lock().unwrap().rid;
-            context.caches.insert(rid, root.clone());
-        }
-
-        let metadata = match query {
-            bindings_context::MetadataQuery::Id(id) => context.caches.get(&id).cloned(),
-            bindings_context::MetadataQuery::Path(path) => context.query_by_path(path),
-        };
+        let metadata = context.resolve(&query);
 
         if let Some(metadata) = metadata {
-            let rid = metadata.lock().unwrap().rid;
-            context.caches.insert(rid, metadata.clone());
-
             let config = bincode::config::standard();
             let metadata = metadata.lock().unwrap();
             let result = match field.as_str() {
@@ -206,22 +183,9 @@ impl bindings_context::HostMetadataHandle for ComponentRunStates {
             .get_mut(&context)
             .inspect_err(|err| log::error!("{err}"))?;
 
-        if context.caches.is_empty()
-            && let Some(root) = &context.inner
-        {
-            let rid = root.lock().unwrap().rid;
-            context.caches.insert(rid, root.clone());
-        }
-
-        let childs = match query {
-            bindings_context::MetadataQuery::Id(id) => context
-                .caches
-                .get(&id)
-                .map(|x| x.lock().unwrap().sub_metadatas.to_vec()),
-            bindings_context::MetadataQuery::Path(path) => context
-                .query_by_path(path)
-                .map(|x| x.lock().unwrap().sub_metadatas.to_vec()),
-        };
+        let childs = context
+            .resolve(&query)
+            .map(|x| x.lock().unwrap().sub_metadatas.to_vec());
 
         match childs {
             Some(childs) => {
@@ -252,17 +216,15 @@ impl bindings_context::HostMetadataHandle for ComponentRunStates {
             .get_mut(&context)
             .inspect_err(|err| log::error!("{err}"))?;
 
-        let node_rid =
-            metadata_query_rid(&query).ok_or_else(|| anyhow!("invalid query {query:?}"))?;
+        let node_rid = metadata_query_rid(context, &query)
+            .ok_or_else(|| anyhow!("invalid query {query:?}"))?;
         let (node, old_parent) = context
             .find_with_parent(node_rid)
             .ok_or_else(|| anyhow!("metadata {node_rid} not found"))?;
 
-        let target_parent = match &target {
-            bindings_context::MetadataQuery::Id(id) => context.caches.get(id).cloned(),
-            bindings_context::MetadataQuery::Path(path) => context.query_by_path(path.clone()),
-        }
-        .ok_or_else(|| anyhow!("target parent {target:?} not found"))?;
+        let target_parent = context
+            .resolve(&target)
+            .ok_or_else(|| anyhow!("target parent {target:?} not found"))?;
 
         let Some(old_parent) = old_parent else {
             return Err(anyhow!("cannot move root metadata {node_rid}"));
@@ -319,10 +281,7 @@ impl bindings_context::HostMetadataHandle for ComponentRunStates {
     ) -> Result<u64> {
         log::trace!("metadata context insert to {query:?}, data: {data:?}");
         let context = self.resource_table.get_mut(&context)?;
-        let parent_metadata = match &query {
-            bindings_context::MetadataQuery::Id(id) => context.caches.get(id).cloned(),
-            bindings_context::MetadataQuery::Path(path) => context.query_by_path(path.clone()),
-        };
+        let parent_metadata = context.resolve(&query);
         match parent_metadata {
             Some(parent_metadata) => {
                 let metadata_data: Arc<Mutex<Metadata<()>>> =
@@ -354,7 +313,8 @@ impl bindings_context::HostMetadataHandle for ComponentRunStates {
             .get_mut(&context)
             .inspect_err(|err| log::error!("{err}"))?;
 
-        let rid = metadata_query_rid(&query).ok_or_else(|| anyhow!("invalid query {query:?}"))?;
+        let rid = metadata_query_rid(context, &query)
+            .ok_or_else(|| anyhow!("invalid query {query:?}"))?;
         let (node, parent) = context
             .find_with_parent(rid)
             .ok_or_else(|| anyhow!("metadata {rid} not found"))?;
@@ -391,10 +351,7 @@ impl bindings_context::HostMetadataHandle for ComponentRunStates {
     ) -> Result<()> {
         log::trace!("metadata context modify field {field}, data: {data:?}");
         let context = self.resource_table.get_mut(&context)?;
-        let node = match query {
-            bindings_context::MetadataQuery::Id(id) => context.caches.get(&id).cloned(),
-            bindings_context::MetadataQuery::Path(path) => context.query_by_path(path),
-        };
+        let node = context.resolve(&query);
 
         if let Some(metadata) = node {
             let mut metadata = metadata.lock().unwrap();
