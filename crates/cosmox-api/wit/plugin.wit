@@ -306,6 +306,8 @@ interface context{
     query: func(query:metadata-query) -> option<list<u8>>;
     query-all: func(query: metadata-query) -> list<u64>;
     move: func(query:metadata-query, target: metadata-query);
+    /// Write the whole extend group atomically: keys are `EXTEND_KEY:field`.
+    write-extend: func(query: metadata-query, pairs: list<tuple<string, string>>);
   }
 
   variant path-mapping-handle-error {

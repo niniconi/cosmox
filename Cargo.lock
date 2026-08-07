@@ -1709,6 +1709,7 @@ dependencies = [
  "cosmox-macros",
  "log",
  "serde",
+ "thiserror 2.0.18",
  "wit-bindgen 0.56.0",
 ]
 

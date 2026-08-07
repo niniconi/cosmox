@@ -2,13 +2,13 @@ use proc_macro::TokenStream;
 use syn::{DeriveInput, ItemMod, ItemStruct, parse_macro_input};
 
 use crate::{
-    actix_web_error::ActixWebErrorInput, metadata::expand_derive_metadata,
+    actix_web_error::ActixWebErrorInput, metadata_extend::expand_metadata_extend,
     page::expand_attr_page_helper, plugin::PluginAttr,
 };
 
 extern crate proc_macro;
 mod actix_web_error;
-mod metadata;
+mod metadata_extend;
 mod page;
 mod plugin;
 mod rkyv_ipc_view;
@@ -32,13 +32,14 @@ pub fn actix_web_error(input: TokenStream) -> TokenStream {
         .into()
 }
 
-/// For automatically implementing the extension fields in `Metadata`.
-///
-/// [`cosmox_api::metadata::Metadata`]
-#[proc_macro_derive(Metdata)]
-pub fn metdata_derive(input: TokenStream) -> TokenStream {
+/// Derive [`cosmox_api::extend::MetadataExtend`] for a struct of
+/// extension fields: each field expands to the flat `extend` key
+/// `#[extend(key = "...")]:field`. Supports `String`, `Option<String>`
+/// and any `Display` + `FromStr` (or `Option<...>` thereof) field types.
+#[proc_macro_derive(MetadataExtend, attributes(extend))]
+pub fn metadata_extend_derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    expand_derive_metadata(input)
+    expand_metadata_extend(input)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }

@@ -13,6 +13,7 @@ bincode = { workspace = true }
 cosmox-macros = { workspace = true }
 log = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["derive", "rc"] }
+thiserror = { workspace = true }
 wit-bindgen = { workspace = true, optional = true, features = ["async"] }
 
 [features]

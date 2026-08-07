@@ -187,7 +187,14 @@ impl bindings_context::HostMetadataHandle for ComponentRunStates {
                     config,
                 )?),
                 "url" => Some(bincode::encode_to_vec(metadata.url.clone(), config)?),
-                _ => None,
+                // Extend keys are addressed verbatim (`EXTEND_KEY:field`,
+                // e.g. `anime:season_number`); a leading `:` prefix is not
+                // accepted and resolves to nothing.
+                _ => metadata
+                    .extend
+                    .get(&field)
+                    .map(|value| bincode::encode_to_vec(value, config))
+                    .transpose()?,
             };
             drop(metadata);
             Ok(result)
@@ -411,15 +418,29 @@ impl bindings_context::HostMetadataHandle for ComponentRunStates {
                 "origin" => {
                     metadata.origin = bincode::decode_from_slice(&data, config)?.0;
                 }
-                s if s.starts_with(":") => {
-                    if let Some(key) = s.get(1..) {
-                        metadata.extend.insert(
-                            key.to_string(),
-                            bincode::decode_from_slice(&data, config)?.0,
-                        );
-                    }
+                _ => {
+                    metadata
+                        .extend
+                        .insert(field.clone(), bincode::decode_from_slice(&data, config)?.0);
                 }
-                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn write_extend(
+        &mut self,
+        context: Resource<MetadataContext>,
+        query: bindings_context::MetadataQuery,
+        pairs: Vec<(String, String)>,
+    ) -> Result<()> {
+        log::trace!("metadata context write_extend on {query:?}: {pairs:?}");
+        let context = self.resource_table.get_mut(&context)?;
+        let node = context.resolve(&query);
+        if let Some(metadata) = node {
+            let mut metadata = metadata.lock().unwrap();
+            for (k, v) in pairs {
+                metadata.extend.insert(k, v);
             }
         }
         Ok(())
@@ -469,10 +490,7 @@ impl bindings_context::HostPathMappingHandle for ComponentRunStates {
 
         let res = match url {
             Ok(url) => {
-                if field == "cover_file_map_id"
-                    || field == "data_file_map_id"
-                    || field.starts_with(':')
-                {
+                if field == "cover_file_map_id" || field == "data_file_map_id" {
                     let mut path_mapping_temp = context.path_mapping_temp.lock().unwrap();
                     if let Some(path_mapping_temp) = path_mapping_temp.get_mut(&id) {
                         path_mapping_temp.push((field, url));
@@ -482,7 +500,7 @@ impl bindings_context::HostPathMappingHandle for ComponentRunStates {
 
                     // TODO
                     // anyhow::anyhow!(
-                    //   "Expected one of: `cover_file_map_id`, `data_file_map_id`. or start with `:`"
+                    //   "Expected one of: `cover_file_map_id` or `data_file_map_id`."
                     // )
                 }
                 Ok(())
