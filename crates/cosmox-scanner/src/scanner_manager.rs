@@ -17,7 +17,7 @@ use cosmox_api::{
 use cosmox_backend_data::services::scanner_service::{self, store_metadata};
 use cosmox_plugin_manager::{Resource, plugin_manager::bindings_context};
 use cosmox_plugin_manager::{
-    context::event::{
+    context::{
         MetadataContext, PathMappingContext, PathMappingContextTemp, TagContext, TagContextTemp,
     },
     plugin_manager::PluginManager,

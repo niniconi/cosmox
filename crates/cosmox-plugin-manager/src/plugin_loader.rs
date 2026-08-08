@@ -28,7 +28,7 @@ use crate::types::{
 use cosmox_agent::ai::call_llm;
 
 pub mod bindings {
-    pub use super::super::context::event::{MetadataContext, PathMappingContext, TagContext};
+    pub use super::super::context::{MetadataContext, PathMappingContext, TagContext};
     use wasmtime::component::bindgen;
 
     bindgen!({
