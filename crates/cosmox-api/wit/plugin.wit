@@ -308,6 +308,10 @@ interface context{
     move: func(query:metadata-query, target: metadata-query);
     /// Write the whole extend group atomically: keys are `EXTEND_KEY:field`.
     write-extend: func(query: metadata-query, pairs: list<tuple<string, string>>);
+    /// Move many nodes under `target` in one call.
+    move-by-ids: func(target: metadata-query, ids: list<u64>);
+    /// Delete many nodes in one call.
+    delete-by-ids: func(ids: list<u64>);
   }
 
   variant path-mapping-handle-error {

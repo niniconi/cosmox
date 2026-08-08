@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
@@ -136,6 +136,107 @@ fn metadata_query_rid(
     }
 }
 
+/// Move `query` under `target`, rejecting cycles. Shared by the single
+/// `move` and the batch `move_by_ids` host methods.
+fn move_node(
+    context: &mut MetadataContext,
+    query: &bindings_context::MetadataQuery,
+    target: &bindings_context::MetadataQuery,
+) -> Result<()> {
+    let node_rid =
+        metadata_query_rid(context, query).ok_or_else(|| anyhow!("invalid query {query:?}"))?;
+    let (node, old_parent) = context
+        .find_with_parent(node_rid)
+        .ok_or_else(|| anyhow!("metadata {node_rid} not found"))?;
+
+    let target_parent = context
+        .resolve(target)
+        .ok_or_else(|| anyhow!("target parent {target:?} not found"))?;
+
+    let Some(old_parent) = old_parent else {
+        return Err(anyhow!("cannot move root metadata {node_rid}"));
+    };
+
+    // Reject moves that would create a cycle: target must not be the node
+    // itself nor any of its descendants.
+    if Arc::ptr_eq(&old_parent, &target_parent) {
+        return Ok(());
+    }
+    let target_rid = target_parent.lock().unwrap().rid;
+    if target_rid == node_rid {
+        return Err(anyhow!("cannot move metadata {node_rid} into itself"));
+    }
+    let mut stack = vec![node.clone()];
+    while let Some(candidate) = stack.pop() {
+        let children = {
+            let guard = candidate.lock().unwrap();
+            guard.sub_metadatas.clone()
+        };
+        for child in children {
+            if child.lock().unwrap().rid == target_rid {
+                return Err(anyhow!(
+                    "cannot move metadata {node_rid} into its own subtree"
+                ));
+            }
+            stack.push(child);
+        }
+    }
+
+    old_parent
+        .lock()
+        .unwrap()
+        .sub_metadatas
+        .retain(|x| !Arc::ptr_eq(x, &node));
+
+    target_parent
+        .lock()
+        .unwrap()
+        .sub_metadatas
+        .push(node.clone());
+
+    // Re-index `node` under its new parent; `target_parent` was already
+    // indexed by `resolve` above.
+    context.caches.insert(
+        node_rid,
+        CachedNode {
+            node: node.clone(),
+            parent: Some(target_parent.clone()),
+        },
+    );
+
+    Ok(())
+}
+
+/// Detach `rid` from its parent and drop cache entries for its subtree.
+/// Shared by the single `delete` and the batch `delete_by_ids` host methods.
+fn delete_node(context: &mut MetadataContext, rid: u64) -> Result<()> {
+    let (node, parent) = context
+        .find_with_parent(rid)
+        .ok_or_else(|| anyhow!("metadata {rid} not found"))?;
+    let Some(parent) = parent else {
+        return Err(anyhow!("cannot delete root metadata {rid}"));
+    };
+
+    parent
+        .lock()
+        .unwrap()
+        .sub_metadatas
+        .retain(|x| !Arc::ptr_eq(x, &node));
+
+    // Drop cache entries for the deleted node and its whole subtree.
+    let mut stack = vec![node];
+    while let Some(candidate) = stack.pop() {
+        let (candidate_rid, children) = {
+            let guard = candidate.lock().unwrap();
+            (guard.rid, guard.sub_metadatas.clone())
+        };
+        context.caches.remove(&candidate_rid);
+        stack.extend(children);
+    }
+
+    Ok(())
+}
+
 impl bindings_context::HostMetadataHandle for ComponentRunStates {
     fn new(&mut self) -> Result<Resource<MetadataContext>> {
         let id = self
@@ -251,69 +352,7 @@ impl bindings_context::HostMetadataHandle for ComponentRunStates {
             .resource_table
             .get_mut(&context)
             .inspect_err(|err| log::error!("{err}"))?;
-
-        let node_rid = metadata_query_rid(context, &query)
-            .ok_or_else(|| anyhow!("invalid query {query:?}"))?;
-        let (node, old_parent) = context
-            .find_with_parent(node_rid)
-            .ok_or_else(|| anyhow!("metadata {node_rid} not found"))?;
-
-        let target_parent = context
-            .resolve(&target)
-            .ok_or_else(|| anyhow!("target parent {target:?} not found"))?;
-
-        let Some(old_parent) = old_parent else {
-            return Err(anyhow!("cannot move root metadata {node_rid}"));
-        };
-
-        // Reject moves that would create a cycle: target must not be the node
-        // itself nor any of its descendants.
-        if Arc::ptr_eq(&old_parent, &target_parent) {
-            return Ok(());
-        }
-        let target_rid = target_parent.lock().unwrap().rid;
-        if target_rid == node_rid {
-            return Err(anyhow!("cannot move metadata {node_rid} into itself"));
-        }
-        let mut stack = vec![node.clone()];
-        while let Some(candidate) = stack.pop() {
-            let children = {
-                let guard = candidate.lock().unwrap();
-                guard.sub_metadatas.clone()
-            };
-            for child in children {
-                if child.lock().unwrap().rid == target_rid {
-                    return Err(anyhow!(
-                        "cannot move metadata {node_rid} into its own subtree"
-                    ));
-                }
-                stack.push(child);
-            }
-        }
-
-        old_parent
-            .lock()
-            .unwrap()
-            .sub_metadatas
-            .retain(|x| !Arc::ptr_eq(x, &node));
-
-        target_parent
-            .lock()
-            .unwrap()
-            .sub_metadatas
-            .push(node.clone());
-
-        // Re-index `node` under its new parent; `target_parent` was already
-        // indexed by `resolve` above.
-        context.caches.insert(
-            node_rid,
-            CachedNode {
-                node: node.clone(),
-                parent: Some(target_parent.clone()),
-            },
-        );
-
-        Ok(())
+        move_node(context, &query, &target)
     }
 
     fn insert(
@@ -364,31 +403,7 @@ impl bindings_context::HostMetadataHandle for ComponentRunStates {
 
         let rid = metadata_query_rid(context, &query)
             .ok_or_else(|| anyhow!("invalid query {query:?}"))?;
-        let (node, parent) = context
-            .find_with_parent(rid)
-            .ok_or_else(|| anyhow!("metadata {rid} not found"))?;
-        let Some(parent) = parent else {
-            return Err(anyhow!("cannot delete root metadata {rid}"));
-        };
-
-        parent
-            .lock()
-            .unwrap()
-            .sub_metadatas
-            .retain(|x| !Arc::ptr_eq(x, &node));
-
-        // Drop cache entries for the deleted node and its whole subtree.
-        let mut stack = vec![node];
-        while let Some(candidate) = stack.pop() {
-            let (candidate_rid, children) = {
-                let guard = candidate.lock().unwrap();
-                (guard.rid, guard.sub_metadatas.clone())
-            };
-            context.caches.remove(&candidate_rid);
-            stack.extend(children);
-        }
-
-        Ok(())
+        delete_node(context, rid)
     }
 
     fn modify(
@@ -442,6 +457,43 @@ impl bindings_context::HostMetadataHandle for ComponentRunStates {
             for (k, v) in pairs {
                 metadata.extend.insert(k, v);
             }
+        }
+        Ok(())
+    }
+
+    fn move_by_ids(
+        &mut self,
+        context: Resource<MetadataContext>,
+        target: bindings_context::MetadataQuery,
+        ids: Vec<u64>,
+    ) -> Result<()> {
+        log::trace!("metadata context move_by_ids {ids:?} to {target:?}");
+        let context = self
+            .resource_table
+            .get_mut(&context)
+            .inspect_err(|err| log::error!("{err}"))?;
+        for id in ids {
+            move_node(context, &bindings_context::MetadataQuery::Id(id), &target)?;
+        }
+        Ok(())
+    }
+
+    fn delete_by_ids(&mut self, context: Resource<MetadataContext>, ids: Vec<u64>) -> Result<()> {
+        log::trace!("metadata context delete_by_ids {ids:?}");
+        let context = self
+            .resource_table
+            .get_mut(&context)
+            .inspect_err(|err| log::error!("{err}"))?;
+        let mut seen = HashSet::new();
+        for id in ids {
+            if !seen.insert(id) {
+                continue;
+            }
+            if context.find_with_parent(id).is_none() {
+                // Already removed by an ancestor's cascade delete.
+                continue;
+            }
+            delete_node(context, id)?;
         }
         Ok(())
     }
