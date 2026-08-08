@@ -770,7 +770,7 @@ fn generate_plugin(
                     .map(|(fn_name, cond)| {
                         let call = match &info.context {
                             Some((_ctx_pat, handles)) => quote! {
-                                let __r = #mod_path::#fn_name(__data.clone(), #(#handles),*);
+                                let __r = #mod_path::#fn_name(__data.clone(), #(#handles.to_view()),*);
                                 if let cosmox_api::api::bindings::exports::cosmox::plugin::host_notifier::PluginResult::Ok = __r {
                                     // ok, continue to next handler
                                 } else {
@@ -882,7 +882,7 @@ fn generate_plugin(
         #module
 
         mod __plugin {
-            use cosmox_api::event::cond::EventCond;
+            use cosmox_api::{event::cond::EventCond, handle::ToView};
 
             pub(crate) struct Plugin;
 
@@ -1060,7 +1060,7 @@ mod tests {
             #module
 
             mod __plugin {
-                use cosmox_api::event::cond::EventCond;
+                use cosmox_api::{event::cond::EventCond, handle::ToView};
                 pub(crate) struct Plugin;
 
                 impl cosmox_api::api::bindings::Guest for Plugin {
@@ -1718,7 +1718,7 @@ mod tests {
         );
         assert!(
             s.contains(
-                "super :: test_mod :: a (__data . clone () , metadata_handle , path_mapping_handle)"
+                "super :: test_mod :: a (__data . clone () , metadata_handle . to_view () , path_mapping_handle . to_view ())"
             ),
             "should call handler with data + &handles: {s}"
         );
