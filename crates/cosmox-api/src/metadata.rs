@@ -8,7 +8,10 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-#[derive(Default, Clone, Serialize, Deserialize, Decode, Encode)]
+/// `T` is a phantom marker: it does not participate in serialization.
+/// `Clone`/`Default`/`Encode`/`Decode` are implemented unconditionally
+/// (for any `T`), since `T` never appears in any serialized field.
+#[derive(Serialize, Deserialize)]
 pub struct Metadata<T> {
     #[serde(skip)]
     pub _marker: PhantomData<T>,
@@ -35,6 +38,112 @@ pub struct Metadata<T> {
     pub checksum: Vec<u8>,
 
     pub extend: HashMap<String, String>,
+}
+
+impl<T> Default for Metadata<T> {
+    fn default() -> Self {
+        Self {
+            _marker: PhantomData,
+            lid: 0,
+            rid: 0,
+            file_size: 0,
+            file_cnt: 0,
+            name: String::new(),
+            alias_name: Vec::new(),
+            origin_name: String::new(),
+            description: String::new(),
+            flags: 0,
+            metadata_type: MetadataType::default(),
+            origin: String::new(),
+            data_file_map_id: None,
+            cover_file_map_id: None,
+            sub_metadatas: Vec::new(),
+            url: String::new(),
+            checksum: Vec::new(),
+            extend: HashMap::new(),
+        }
+    }
+}
+
+impl<T> Clone for Metadata<T> {
+    fn clone(&self) -> Self {
+        Self {
+            _marker: PhantomData,
+            lid: self.lid,
+            rid: self.rid,
+            file_size: self.file_size,
+            file_cnt: self.file_cnt,
+            name: self.name.clone(),
+            alias_name: self.alias_name.clone(),
+            origin_name: self.origin_name.clone(),
+            description: self.description.clone(),
+            flags: self.flags,
+            metadata_type: self.metadata_type.clone(),
+            origin: self.origin.clone(),
+            data_file_map_id: self.data_file_map_id,
+            cover_file_map_id: self.cover_file_map_id,
+            sub_metadatas: self.sub_metadatas.clone(),
+            url: self.url.clone(),
+            checksum: self.checksum.clone(),
+            extend: self.extend.clone(),
+        }
+    }
+}
+
+impl<T> Encode for Metadata<T> {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> Result<(), bincode::error::EncodeError> {
+        // Field order must stay in sync with `Decode` and the manual
+        // `encode_no_child_*` helpers below.
+        self._marker.encode(encoder)?;
+        self.lid.encode(encoder)?;
+        self.rid.encode(encoder)?;
+        self.file_size.encode(encoder)?;
+        self.file_cnt.encode(encoder)?;
+        self.name.encode(encoder)?;
+        self.alias_name.encode(encoder)?;
+        self.origin_name.encode(encoder)?;
+        self.description.encode(encoder)?;
+        self.flags.encode(encoder)?;
+        self.metadata_type.encode(encoder)?;
+        self.origin.encode(encoder)?;
+        self.data_file_map_id.encode(encoder)?;
+        self.cover_file_map_id.encode(encoder)?;
+        self.sub_metadatas.encode(encoder)?;
+        self.url.encode(encoder)?;
+        self.checksum.encode(encoder)?;
+        self.extend.encode(encoder)?;
+        Ok(())
+    }
+}
+
+impl<T> Decode<()> for Metadata<T> {
+    fn decode<D: bincode::de::Decoder<Context = ()>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        Ok(Self {
+            _marker: PhantomData,
+            lid: u64::decode(decoder)?,
+            rid: u64::decode(decoder)?,
+            file_size: u64::decode(decoder)?,
+            file_cnt: u64::decode(decoder)?,
+            name: String::decode(decoder)?,
+            alias_name: Vec::<String>::decode(decoder)?,
+            origin_name: String::decode(decoder)?,
+            description: String::decode(decoder)?,
+            flags: u32::decode(decoder)?,
+            metadata_type: MetadataType::decode(decoder)?,
+            origin: String::decode(decoder)?,
+            data_file_map_id: Option::<u64>::decode(decoder)?,
+            cover_file_map_id: Option::<u64>::decode(decoder)?,
+            sub_metadatas: Vec::<Arc<Mutex<Metadata<T>>>>::decode(decoder)?,
+            url: String::decode(decoder)?,
+            checksum: Vec::<u8>::decode(decoder)?,
+            extend: HashMap::<String, String>::decode(decoder)?,
+        })
+    }
 }
 
 /// Shared handle to a `Metadata<()>` node: the concrete node type used
@@ -182,7 +291,7 @@ mod bincode__internal_access {
     }
 }
 
-impl<T: Encode> Metadata<T> {
+impl<T> Metadata<T> {
     pub fn binencode(&self) -> Result<Vec<u8>> {
         let config = bincode::config::standard();
         bincode::encode_to_vec(self, config).map_err(|err| anyhow!(err))
@@ -270,7 +379,7 @@ impl<T: Encode> Metadata<T> {
     }
 }
 
-impl<T: Decode<()>> Metadata<T> {
+impl<T> Metadata<T> {
     pub fn bindecode(data: Vec<u8>) -> Result<Arc<Metadata<T>>> {
         let config = bincode::config::standard();
         Ok(

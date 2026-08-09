@@ -93,10 +93,13 @@ impl ToView for MetadataHandle {
 }
 
 impl<'a> MetadataView<'a> {
-    /// Read a whole node and decode it into a [`Metadata`].
+    /// Read a whole node and decode it into a [`Metadata<T>`].
     ///
-    /// Returns `None` if the node does not exist or fails to decode.
-    pub fn query(&self, query: &MetadataQuery) -> Option<Metadata<()>> {
+    /// `T` is a phantom marker: it does not participate in (de)serialization,
+    /// so any `T` works (usually `()`, or a `MetadataExtend` struct for nodes
+    /// carrying extension data). Returns `None` if the node does not exist or
+    /// fails to decode.
+    pub fn query<T>(&self, query: &MetadataQuery) -> Option<Metadata<T>> {
         let blob = self.handle.query(query)?;
         Metadata::bindecode(blob).ok().map(|node| (*node).clone())
     }
@@ -129,7 +132,7 @@ impl<'a> MetadataView<'a> {
     /// Insert a node under `query`, encoding `data` internally.
     ///
     /// Returns the new node's rid.
-    pub fn insert(&self, query: &MetadataQuery, data: &Metadata<()>) -> Option<u64> {
+    pub fn insert<T>(&self, query: &MetadataQuery, data: &Metadata<T>) -> Option<u64> {
         let blob = data.binencode().ok()?;
         Some(self.handle.insert(query, &blob))
     }
@@ -143,7 +146,7 @@ impl<'a> MetadataView<'a> {
         name: &str,
         metadata_type: MetadataType,
     ) -> Option<u64> {
-        let meta = Metadata {
+        let meta = Metadata::<()> {
             name: name.to_string(),
             metadata_type,
             ..Default::default()
@@ -186,7 +189,7 @@ impl<'a> MetadataView<'a> {
     /// Read a plugin-defined `MetadataExtend` struct out of `query`'s
     /// `extend` map (only `EXTEND_KEY:`-prefixed keys are collected).
     pub fn read_extend<T: MetadataExtend>(&self, query: &MetadataQuery) -> Option<T> {
-        let meta = self.query(query)?;
+        let meta = self.query::<()>(query)?;
         T::from_extend_pairs(&meta.extend).ok()
     }
 
