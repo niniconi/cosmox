@@ -341,10 +341,13 @@ pub struct ScannerInfo {
 
 // -- Metadata --
 
-#[derive(Debug, Deserialize)]
-pub struct MetadataQueryRequest {
-    pub root_node: u64,
-    pub depth: usize,
+/// The root of a metadata query: a concrete node id, or the tree root.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MetadataQueryKey {
+    /// Query a concrete node by id.
+    Id(u64),
+    /// Query the root of the metadata tree.
+    Root,
 }
 
 // -- File --

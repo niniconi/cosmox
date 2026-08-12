@@ -8,7 +8,9 @@ use crate::{
     message::{ApiError, FromService, Message},
 };
 
-pub use cosmox_backend_data::services::metadata_service::{MetadataError, MetadataQueryRequest};
+pub use cosmox_backend_data::services::metadata_service::{
+    MetadataError, MetadataQueryKey, MetadataQueryRequest,
+};
 
 pub async fn get(
     ctx: &mut Context<'_>,
@@ -16,7 +18,7 @@ pub async fn get(
 ) -> Result<Message<MetadataNode>, ApiError<MetadataError>> {
     ctx.access_ctx.endpoint = api::Endpoint::GetMetadata { rid };
     let payload = Arc::new(MetadataQueryRequest {
-        root_node: rid,
+        root: MetadataQueryKey::Id(rid),
         depth: 1,
     });
     Message::from_service(ctx, metadata_service::query_metadata(payload)).await
@@ -25,8 +27,10 @@ pub async fn get(
 /// Query metadata from server
 pub async fn query(
     ctx: &mut Context<'_>,
-    payload: Arc<MetadataQueryRequest>,
+    key: MetadataQueryKey,
+    depth: usize,
 ) -> Result<Message<MetadataNode>, ApiError<MetadataError>> {
     ctx.access_ctx.endpoint = api::Endpoint::QueryMetadata;
+    let payload = Arc::new(MetadataQueryRequest { root: key, depth });
     Message::from_service(ctx, metadata_service::query_metadata(payload)).await
 }

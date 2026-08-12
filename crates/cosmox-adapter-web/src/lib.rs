@@ -146,7 +146,8 @@ pub fn server(
                     )
                     .service(
                         web::scope("/metadata")
-                            .service(metadata_controller::query)
+                            .service(metadata_controller::query_root)
+                            .service(metadata_controller::query_by_id)
                             .service(metadata_controller::get),
                     )
                     .service(web::scope("/ui").service(ui_controller::get_core))

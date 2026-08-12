@@ -5,13 +5,13 @@ type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, SdkError>> + Send 
 
 use crate::types::{
     InitStatus, InitializeConfig, InstallPlugin, LibrariesRelatedTags, Library, LibraryAdd,
-    LibraryDeleteRequest, LibraryModify, LibraryPath, LibraryQueryRequest, LibraryType, Permission,
-    PermissionAddRequest, PluginQueryItem, PluginQueryRequest, PushResponse, Resource,
-    ResourceAddRequest, ResourceModifyRequest, ResourceQueryRequest, Role, RoleAddRequest,
-    RoleLinkPermissionAddRequest, ScannerInfo, ScannerStatus, ScannerTaskAddRequest, SearchRequest,
-    SystemInfo, Tag, TagAddRequest, TagCatalogEntry, TagGroup, TagGroupAddRequest,
-    TagGroupDeleteRequest, TagGroupQueryRequest, TagQueryRequest, User, UserLogin,
-    UserQueryRequest, UserResp, UserRoleAddRequest, UserSignUp,
+    LibraryDeleteRequest, LibraryModify, LibraryPath, LibraryQueryRequest, LibraryType,
+    MetadataQueryKey, Permission, PermissionAddRequest, PluginQueryItem, PluginQueryRequest,
+    PushResponse, Resource, ResourceAddRequest, ResourceModifyRequest, ResourceQueryRequest, Role,
+    RoleAddRequest, RoleLinkPermissionAddRequest, ScannerInfo, ScannerStatus,
+    ScannerTaskAddRequest, SearchRequest, SystemInfo, Tag, TagAddRequest, TagCatalogEntry,
+    TagGroup, TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest, TagQueryRequest,
+    User, UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest, UserSignUp,
 };
 
 pub use error::SdkError;
@@ -118,7 +118,11 @@ pub trait Api {
     fn scanner_info(&self) -> ApiFuture<'_, ScannerInfo>;
     fn scanner_add_task(&self, payload: ScannerTaskAddRequest) -> ApiFuture<'_, ()>;
 
-    fn metadata_query(&self, root_node: u64, depth: usize) -> ApiFuture<'_, serde_json::Value>;
+    fn metadata_query(
+        &self,
+        root: MetadataQueryKey,
+        depth: usize,
+    ) -> ApiFuture<'_, serde_json::Value>;
     fn metadata_get(&self, rid: u64) -> ApiFuture<'_, serde_json::Value>;
 
     fn path_sub_path(&self, path: String, show_hide: bool) -> ApiFuture<'_, Vec<String>>;

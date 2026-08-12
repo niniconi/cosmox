@@ -6,13 +6,13 @@ use crate::{
     types::{
         InitStatus, InitializeConfig, InstallPlugin, LibrariesRelatedTags, Library, LibraryAdd,
         LibraryDeleteRequest, LibraryModify, LibraryPath, LibraryQueryRequest, LibraryType,
-        Message, MessagePayload, Permission, PermissionAddRequest, PluginQueryItem,
-        PluginQueryRequest, PushResponse, Resource, ResourceAddRequest, ResourceModifyRequest,
-        ResourceQueryRequest, Role, RoleAddRequest, RoleLinkPermissionAddRequest, ScannerInfo,
-        ScannerStatus, ScannerTaskAddRequest, SearchRequest, SystemInfo, Tag, TagAddRequest,
-        TagCatalogEntry, TagGroup, TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest,
-        TagQueryRequest, User, UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest,
-        UserSignUp,
+        Message, MessagePayload, MetadataQueryKey, Permission, PermissionAddRequest,
+        PluginQueryItem, PluginQueryRequest, PushResponse, Resource, ResourceAddRequest,
+        ResourceModifyRequest, ResourceQueryRequest, Role, RoleAddRequest,
+        RoleLinkPermissionAddRequest, ScannerInfo, ScannerStatus, ScannerTaskAddRequest,
+        SearchRequest, SystemInfo, Tag, TagAddRequest, TagCatalogEntry, TagGroup,
+        TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest, TagQueryRequest, User,
+        UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest, UserSignUp,
     },
 };
 
@@ -517,12 +517,18 @@ impl Api for HttpApi {
         Box::pin(async move { self.post("/scanner/task/add", &payload).await })
     }
 
-    fn metadata_query(&self, root_node: u64, depth: usize) -> ApiFuture<'_, serde_json::Value> {
+    fn metadata_query(
+        &self,
+        root: MetadataQueryKey,
+        depth: usize,
+    ) -> ApiFuture<'_, serde_json::Value> {
         Box::pin(async move {
-            self.get(&format!(
-                "/metadata/query?root_node={root_node}&depth={depth}"
-            ))
-            .await
+            let root = match root {
+                MetadataQueryKey::Id(rid) => rid.to_string(),
+                MetadataQueryKey::Root => "root".to_string(),
+            };
+            self.get(&format!("/metadata/query/{root}?depth={depth}"))
+                .await
         })
     }
 
