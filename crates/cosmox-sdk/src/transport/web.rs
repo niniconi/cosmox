@@ -6,7 +6,7 @@ use crate::{
     types::{
         InitStatus, InitializeConfig, InstallPlugin, LibrariesRelatedTags, Library, LibraryAdd,
         LibraryDeleteRequest, LibraryModify, LibraryPath, LibraryQueryRequest, LibraryType,
-        Message, MessagePayload, MetadataQueryKey, Permission, PermissionAddRequest,
+        Message, MessagePayload, Metadata, MetadataQueryKey, Permission, PermissionAddRequest,
         PluginQueryItem, PluginQueryRequest, PushResponse, Resource, ResourceAddRequest,
         ResourceModifyRequest, ResourceQueryRequest, Role, RoleAddRequest,
         RoleLinkPermissionAddRequest, ScannerInfo, ScannerStatus, ScannerTaskAddRequest,
@@ -517,11 +517,7 @@ impl Api for HttpApi {
         Box::pin(async move { self.post("/scanner/task/add", &payload).await })
     }
 
-    fn metadata_query(
-        &self,
-        root: MetadataQueryKey,
-        depth: usize,
-    ) -> ApiFuture<'_, serde_json::Value> {
+    fn metadata_query(&self, root: MetadataQueryKey, depth: usize) -> ApiFuture<'_, Metadata<()>> {
         Box::pin(async move {
             let root = match root {
                 MetadataQueryKey::Id(rid) => rid.to_string(),
@@ -532,7 +528,7 @@ impl Api for HttpApi {
         })
     }
 
-    fn metadata_get(&self, rid: u64) -> ApiFuture<'_, serde_json::Value> {
+    fn metadata_get(&self, rid: u64) -> ApiFuture<'_, Metadata<()>> {
         Box::pin(async move { self.get(&format!("/metadata/{rid}")).await })
     }
 

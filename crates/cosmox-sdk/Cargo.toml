@@ -12,6 +12,7 @@ crate-type = ["rlib", "cdylib"]
 
 [dependencies]
 chrono = { workspace = true, features = ["serde"] }
+cosmox-api = { workspace = true, default-features = false }
 reqwest = { workspace = true, optional = true, features = ["rustls", "http2", "charset", "system-proxy", "blocking", "json", "cookies"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

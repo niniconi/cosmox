@@ -2,6 +2,9 @@ use std::collections::HashMap;
 
 use crate::metadata::Metadata;
 
+/// `#[derive(MetadataExtend)]` for extension metadata structs.
+pub use cosmox_macros::MetadataExtend;
+
 /// Constraints for plugin-defined extension metadata.
 ///
 /// A struct implementing this trait is the `T` of `Metadata<T>`; each of

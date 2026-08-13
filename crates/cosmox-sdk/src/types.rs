@@ -2,6 +2,9 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+pub use cosmox_api::extend::{ExtendError, MetadataExtend};
+pub use cosmox_api::metadata::{Metadata, MetadataType};
+
 // -- API Envelope --
 
 #[derive(Debug, Deserialize)]

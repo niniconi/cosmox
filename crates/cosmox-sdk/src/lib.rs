@@ -5,7 +5,7 @@ type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, SdkError>> + Send 
 
 use crate::types::{
     InitStatus, InitializeConfig, InstallPlugin, LibrariesRelatedTags, Library, LibraryAdd,
-    LibraryDeleteRequest, LibraryModify, LibraryPath, LibraryQueryRequest, LibraryType,
+    LibraryDeleteRequest, LibraryModify, LibraryPath, LibraryQueryRequest, LibraryType, Metadata,
     MetadataQueryKey, Permission, PermissionAddRequest, PluginQueryItem, PluginQueryRequest,
     PushResponse, Resource, ResourceAddRequest, ResourceModifyRequest, ResourceQueryRequest, Role,
     RoleAddRequest, RoleLinkPermissionAddRequest, ScannerInfo, ScannerStatus,
@@ -118,12 +118,8 @@ pub trait Api {
     fn scanner_info(&self) -> ApiFuture<'_, ScannerInfo>;
     fn scanner_add_task(&self, payload: ScannerTaskAddRequest) -> ApiFuture<'_, ()>;
 
-    fn metadata_query(
-        &self,
-        root: MetadataQueryKey,
-        depth: usize,
-    ) -> ApiFuture<'_, serde_json::Value>;
-    fn metadata_get(&self, rid: u64) -> ApiFuture<'_, serde_json::Value>;
+    fn metadata_query(&self, root: MetadataQueryKey, depth: usize) -> ApiFuture<'_, Metadata<()>>;
+    fn metadata_get(&self, rid: u64) -> ApiFuture<'_, Metadata<()>>;
 
     fn path_sub_path(&self, path: String, show_hide: bool) -> ApiFuture<'_, Vec<String>>;
     fn initialize(&self, payload: InitializeConfig) -> ApiFuture<'_, InitStatus>;

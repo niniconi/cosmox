@@ -4,12 +4,13 @@ use crate::{
     types::{
         InitStatus, InitializeConfig, InstallPlugin, LibrariesRelatedTags, Library, LibraryAdd,
         LibraryDeleteRequest, LibraryModify, LibraryPath, LibraryQueryRequest, LibraryType,
-        MetadataQueryKey, Permission, PermissionAddRequest, PluginQueryItem, PluginQueryRequest,
-        PushResponse, Resource, ResourceAddRequest, ResourceModifyRequest, ResourceQueryRequest,
-        Role, RoleAddRequest, RoleLinkPermissionAddRequest, ScannerInfo, ScannerStatus,
-        ScannerTaskAddRequest, SearchRequest, SystemInfo, Tag, TagAddRequest, TagCatalogEntry,
-        TagGroup, TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest, TagQueryRequest,
-        User, UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest, UserSignUp,
+        Metadata, MetadataQueryKey, Permission, PermissionAddRequest, PluginQueryItem,
+        PluginQueryRequest, PushResponse, Resource, ResourceAddRequest, ResourceModifyRequest,
+        ResourceQueryRequest, Role, RoleAddRequest, RoleLinkPermissionAddRequest, ScannerInfo,
+        ScannerStatus, ScannerTaskAddRequest, SearchRequest, SystemInfo, Tag, TagAddRequest,
+        TagCatalogEntry, TagGroup, TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest,
+        TagQueryRequest, User, UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest,
+        UserSignUp,
     },
 };
 
@@ -430,7 +431,7 @@ impl Api for IpcApi {
         &self,
         _root: MetadataQueryKey,
         _depth: usize,
-    ) -> ApiFuture<'_, serde_json::Value> {
+    ) -> ApiFuture<'_, Metadata<()>> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "IPC transport not implemented yet".into(),
@@ -438,7 +439,7 @@ impl Api for IpcApi {
         })
     }
 
-    fn metadata_get(&self, _rid: u64) -> ApiFuture<'_, serde_json::Value> {
+    fn metadata_get(&self, _rid: u64) -> ApiFuture<'_, Metadata<()>> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "IPC transport not implemented yet".into(),
