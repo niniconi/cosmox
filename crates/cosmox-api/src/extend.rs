@@ -27,6 +27,20 @@ pub trait MetadataExtend: Default + 'static {
     fn from_extend_pairs(pairs: &HashMap<String, String>) -> Result<Self, ExtendError>;
 }
 
+/// Marker implementation for `()`: the default `T` of `Metadata<()>`
+/// nodes, which carry no extension data.
+impl MetadataExtend for () {
+    const EXTEND_KEY: &'static str = "";
+
+    fn to_extend_pairs(self) -> Vec<(String, String)> {
+        Vec::new()
+    }
+
+    fn from_extend_pairs(_pairs: &HashMap<String, String>) -> Result<Self, ExtendError> {
+        Ok(())
+    }
+}
+
 /// Field expansion/aggregation errors.
 #[derive(Debug, thiserror::Error)]
 pub enum ExtendError {

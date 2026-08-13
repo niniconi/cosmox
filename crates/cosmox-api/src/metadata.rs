@@ -8,11 +8,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use crate::extend::MetadataExtend;
+
 /// `T` is a phantom marker: it does not participate in serialization.
-/// `Clone`/`Default`/`Encode`/`Decode` are implemented unconditionally
-/// (for any `T`), since `T` never appears in any serialized field.
+/// It is bounded by [`MetadataExtend`] so that the tree can carry
+/// plugin-defined extension metadata; `()` is the plain (no-extension) marker.
 #[derive(Serialize, Deserialize)]
-pub struct Metadata<T> {
+pub struct Metadata<T: MetadataExtend> {
     #[serde(skip)]
     pub _marker: PhantomData<T>,
 
@@ -40,7 +42,7 @@ pub struct Metadata<T> {
     pub extend: HashMap<String, String>,
 }
 
-impl<T> Default for Metadata<T> {
+impl<T: MetadataExtend> Default for Metadata<T> {
     fn default() -> Self {
         Self {
             _marker: PhantomData,
@@ -65,7 +67,7 @@ impl<T> Default for Metadata<T> {
     }
 }
 
-impl<T> Clone for Metadata<T> {
+impl<T: MetadataExtend> Clone for Metadata<T> {
     fn clone(&self) -> Self {
         Self {
             _marker: PhantomData,
@@ -90,7 +92,7 @@ impl<T> Clone for Metadata<T> {
     }
 }
 
-impl<T> Encode for Metadata<T> {
+impl<T: MetadataExtend> Encode for Metadata<T> {
     fn encode<E: bincode::enc::Encoder>(
         &self,
         encoder: &mut E,
@@ -119,7 +121,7 @@ impl<T> Encode for Metadata<T> {
     }
 }
 
-impl<T> Decode<()> for Metadata<T> {
+impl<T: MetadataExtend> Decode<()> for Metadata<T> {
     fn decode<D: bincode::de::Decoder<Context = ()>>(
         decoder: &mut D,
     ) -> Result<Self, bincode::error::DecodeError> {
@@ -150,7 +152,7 @@ impl<T> Decode<()> for Metadata<T> {
 /// throughout the tree (children, parents, cache entries).
 pub type MetadataNode = Arc<Mutex<Metadata<()>>>;
 
-impl<T> Debug for Metadata<T> {
+impl<T: MetadataExtend> Debug for Metadata<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Metadata")
             .field("lid", &self.lid)
@@ -161,7 +163,7 @@ impl<T> Debug for Metadata<T> {
     }
 }
 
-impl<T> Metadata<T> {
+impl<T: MetadataExtend> Metadata<T> {
     fn _tree_fmt(
         metadata: &Self,
         depth: usize,
@@ -291,7 +293,7 @@ mod bincode__internal_access {
     }
 }
 
-impl<T> Metadata<T> {
+impl<T: MetadataExtend> Metadata<T> {
     pub fn binencode(&self) -> Result<Vec<u8>> {
         let config = bincode::config::standard();
         bincode::encode_to_vec(self, config).map_err(|err| anyhow!(err))
@@ -379,7 +381,7 @@ impl<T> Metadata<T> {
     }
 }
 
-impl<T> Metadata<T> {
+impl<T: MetadataExtend> Metadata<T> {
     pub fn bindecode(data: Vec<u8>) -> Result<Arc<Metadata<T>>> {
         let config = bincode::config::standard();
         Ok(
