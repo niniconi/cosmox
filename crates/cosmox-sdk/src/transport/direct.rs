@@ -4,13 +4,13 @@ use crate::{
     types::{
         InitStatus, InitializeConfig, InstallPlugin, LibrariesRelatedTags, Library, LibraryAdd,
         LibraryDeleteRequest, LibraryModify, LibraryPath, LibraryQueryRequest, LibraryType,
-        Metadata, MetadataQueryKey, Permission, PermissionAddRequest, PluginQueryItem,
-        PluginQueryRequest, PushResponse, Resource, ResourceAddRequest, ResourceModifyRequest,
-        ResourceQueryRequest, Role, RoleAddRequest, RoleLinkPermissionAddRequest, ScannerInfo,
-        ScannerStatus, ScannerTaskAddRequest, SearchRequest, SystemInfo, Tag, TagAddRequest,
-        TagCatalogEntry, TagGroup, TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest,
-        TagQueryRequest, User, UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest,
-        UserSignUp,
+        Metadata, MetadataExtend, MetadataQueryKey, Permission, PermissionAddRequest,
+        PluginQueryItem, PluginQueryRequest, PushResponse, Resource, ResourceAddRequest,
+        ResourceModifyRequest, ResourceQueryRequest, Role, RoleAddRequest,
+        RoleLinkPermissionAddRequest, ScannerInfo, ScannerStatus, ScannerTaskAddRequest,
+        SearchRequest, SystemInfo, Tag, TagAddRequest, TagCatalogEntry, TagGroup,
+        TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest, TagQueryRequest, User,
+        UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest, UserSignUp,
     },
 };
 
@@ -393,18 +393,18 @@ impl Api for DirectApi {
         })
     }
 
-    fn metadata_query(
+    fn metadata_query<T: MetadataExtend>(
         &self,
         _root: MetadataQueryKey,
         _depth: usize,
-    ) -> ApiFuture<'_, Metadata<()>> {
+    ) -> ApiFuture<'_, Metadata<T>> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),
             ))
         })
     }
-    fn metadata_get(&self, _rid: u64) -> ApiFuture<'_, Metadata<()>> {
+    fn metadata_get<T: MetadataExtend>(&self, _rid: u64) -> ApiFuture<'_, Metadata<T>> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "Direct transport not implemented yet".into(),

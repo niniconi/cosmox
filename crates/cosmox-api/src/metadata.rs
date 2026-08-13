@@ -13,7 +13,12 @@ use crate::extend::MetadataExtend;
 /// `T` is a phantom marker: it does not participate in serialization.
 /// It is bounded by [`MetadataExtend`] so that the tree can carry
 /// plugin-defined extension metadata; `()` is the plain (no-extension) marker.
+///
+/// `#[serde(bound)]` overrides serde's bound inference (`T` would otherwise
+/// be required to implement `Serialize`/`Deserialize` through the recursive
+/// `sub_metadatas` field); only `T: MetadataExtend` must hold.
 #[derive(Serialize, Deserialize)]
+#[serde(bound(serialize = "T: MetadataExtend", deserialize = "T: MetadataExtend"))]
 pub struct Metadata<T: MetadataExtend> {
     #[serde(skip)]
     pub _marker: PhantomData<T>,

@@ -6,9 +6,9 @@ use crate::{
     types::{
         InitStatus, InitializeConfig, InstallPlugin, LibrariesRelatedTags, Library, LibraryAdd,
         LibraryDeleteRequest, LibraryModify, LibraryPath, LibraryQueryRequest, LibraryType,
-        Message, MessagePayload, Metadata, MetadataQueryKey, Permission, PermissionAddRequest,
-        PluginQueryItem, PluginQueryRequest, PushResponse, Resource, ResourceAddRequest,
-        ResourceModifyRequest, ResourceQueryRequest, Role, RoleAddRequest,
+        Message, MessagePayload, Metadata, MetadataExtend, MetadataQueryKey, Permission,
+        PermissionAddRequest, PluginQueryItem, PluginQueryRequest, PushResponse, Resource,
+        ResourceAddRequest, ResourceModifyRequest, ResourceQueryRequest, Role, RoleAddRequest,
         RoleLinkPermissionAddRequest, ScannerInfo, ScannerStatus, ScannerTaskAddRequest,
         SearchRequest, SystemInfo, Tag, TagAddRequest, TagCatalogEntry, TagGroup,
         TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest, TagQueryRequest, User,
@@ -517,7 +517,11 @@ impl Api for HttpApi {
         Box::pin(async move { self.post("/scanner/task/add", &payload).await })
     }
 
-    fn metadata_query(&self, root: MetadataQueryKey, depth: usize) -> ApiFuture<'_, Metadata<()>> {
+    fn metadata_query<T: MetadataExtend>(
+        &self,
+        root: MetadataQueryKey,
+        depth: usize,
+    ) -> ApiFuture<'_, Metadata<T>> {
         Box::pin(async move {
             let root = match root {
                 MetadataQueryKey::Id(rid) => rid.to_string(),
@@ -528,7 +532,7 @@ impl Api for HttpApi {
         })
     }
 
-    fn metadata_get(&self, rid: u64) -> ApiFuture<'_, Metadata<()>> {
+    fn metadata_get<T: MetadataExtend>(&self, rid: u64) -> ApiFuture<'_, Metadata<T>> {
         Box::pin(async move { self.get(&format!("/metadata/{rid}")).await })
     }
 
