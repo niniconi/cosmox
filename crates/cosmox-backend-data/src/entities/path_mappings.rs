@@ -9,6 +9,7 @@ use serde::Serialize;
 pub struct Model {
     #[sea_orm(primary_key)]
     pub pmid: u64,
+    #[sea_orm(unique)]
     pub path: String,
     pub mime_type: String,
     #[sea_orm(has_many)]

@@ -64,6 +64,26 @@ pub async fn push_multiple_links() {
 }
 
 #[tokio::test]
+pub async fn push_same_link_dedup() {
+    let ctx = TestContext::new().await;
+
+    let url = url::Url::parse("file:///tmp/same_file.bin").unwrap();
+
+    let pmid_a = file_service::push_item_link_db(&ctx.db, url.clone())
+        .await
+        .expect("push a failed");
+
+    let pmid_b = file_service::push_item_link_db(&ctx.db, url)
+        .await
+        .expect("push b failed");
+
+    assert_eq!(
+        pmid_a, pmid_b,
+        "pushing the same path twice should reuse the existing pmid"
+    );
+}
+
+#[tokio::test]
 pub async fn push_http_link_stores_path() {
     let ctx = TestContext::new().await;
 

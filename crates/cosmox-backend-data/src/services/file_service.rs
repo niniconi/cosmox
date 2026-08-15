@@ -5,7 +5,9 @@ use common::fs::FileCleanupGuard;
 use common::security::check_new_path_safe;
 use cosmox_configuration::Configuration;
 use futures_util::StreamExt;
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection, EntityTrait};
+use sea_orm::{
+    ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TryInsertResult,
+};
 use serde::Serialize;
 use tokio::{
     fs::File,
@@ -222,17 +224,54 @@ pub async fn push_item_link(link: Url) -> Result<u64, anyhow::Error> {
 }
 
 pub async fn push_item_link_db(db: &DatabaseConnection, link: Url) -> Result<u64, anyhow::Error> {
+    let link_string = link.to_string();
+
+    // Fast path: reuse the existing pmid when the path is already registered.
+    // MySQL has no RETURNING, so the unique `path` constraint plus TryInsert
+    // covers the racy insert below (losing runner fetches the winner's pmid).
+    if let Some(existing) = path_mappings::Entity::find()
+        .filter(path_mappings::Column::Path.eq(&link_string))
+        .one(db)
+        .await
+        .inspect_err(|err| log::error!("{err}"))
+        .map_err(|err| FileError::InternalError(format!("Query path mapping failed: {err}")))?
+    {
+        return Ok(existing.pmid);
+    }
+
     let path_mapping = path_mappings::ActiveModel {
-        path: Set(link.to_string()),
+        path: Set(link_string),
         mime_type: Set("external".to_string()),
         ..Default::default()
     };
-    let path_mapping = path_mapping
-        .insert(db)
+    let inserted = path_mappings::Entity::insert(path_mapping)
+        .on_conflict_do_nothing_on([path_mappings::Column::Path])
+        .exec(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
         .map_err(|err| FileError::InternalError(format!("Insert path mapping failed: {err}")))?;
-    Ok(path_mapping.pmid)
+
+    match inserted {
+        TryInsertResult::Inserted(result) => Ok(result.last_insert_id),
+        // Lost a concurrent insert race; the unique constraint rejected ours.
+        TryInsertResult::Conflicted => {
+            let existing = path_mappings::Entity::find()
+                .filter(path_mappings::Column::Path.eq(link.to_string()))
+                .one(db)
+                .await
+                .inspect_err(|err| log::error!("{err}"))
+                .map_err(|err| {
+                    FileError::InternalError(format!("Query path mapping failed: {err}"))
+                })?
+                .ok_or_else(|| {
+                    FileError::InternalError(format!(
+                        "Path mapping conflict resolved to nothing for {link}"
+                    ))
+                })?;
+            Ok(existing.pmid)
+        }
+        TryInsertResult::Empty => unreachable!("single-model insert never yields Empty"),
+    }
 }
 
 pub async fn push_item_octet_stream<S, E>(payload: S) -> Result<PushResponse, FileError>
