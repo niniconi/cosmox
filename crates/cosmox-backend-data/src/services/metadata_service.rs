@@ -1,5 +1,5 @@
 use std::{
-    fmt::Debug,
+    fmt::{Debug, Display},
     fs::{self, File},
     io::BufReader,
     path::{Path, PathBuf},
@@ -16,7 +16,7 @@ use crate::{entities::metadata_indexes, get_db_connection};
 #[derive(Debug, thiserror::Error)]
 pub enum MetadataError {
     #[error("Metadata not found with {0}")]
-    NotFound(u64),
+    NotFound(MetadataQueryKey),
 
     /// Indicates an unexpected server-side issue.
     #[error("Internal server error: {0}")]
@@ -30,6 +30,15 @@ pub enum MetadataQueryKey {
     Id(u64),
     /// Query the root of the metadata tree.
     Root,
+}
+
+impl Display for MetadataQueryKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MetadataQueryKey::Id(id) => write!(f, "id {id}"),
+            MetadataQueryKey::Root => write!(f, "root"),
+        }
+    }
 }
 
 pub struct MetadataQueryRequest {
@@ -105,22 +114,32 @@ async fn load_root_children(
     max_depth: usize,
     root: &MetadataNode,
 ) -> Result<(), MetadataError> {
-    let entries = fs::read_dir(metadata_path)
-        .inspect_err(|err| log::error!("Failed to read directory {:?}: {err}", metadata_path))
-        .map_err(|err| {
-            MetadataError::InternalError(format!("Failed to read metadata root: {err}"))
-        })?
-        .filter_map(|entry| {
-            if let Ok(entry) = entry
-                && let Ok(entry_metadata) = entry.metadata()
-                && entry_metadata.is_dir()
-            {
-                Some(entry.path())
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
+    let entries = match fs::read_dir(metadata_path) {
+        Ok(entries) => entries,
+        // Fresh server with no metadata yet: the root directory has never
+        // been created, which is a missing-resource condition (404), not
+        // a server-side failure (500).
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Err(MetadataError::NotFound(MetadataQueryKey::Root));
+        }
+        Err(err) => {
+            log::error!("Failed to read directory {:?}: {err}", metadata_path);
+            return Err(MetadataError::InternalError(format!(
+                "Failed to read metadata root: {err}"
+            )));
+        }
+    }
+    .filter_map(|entry| {
+        if let Ok(entry) = entry
+            && let Ok(entry_metadata) = entry.metadata()
+            && entry_metadata.is_dir()
+        {
+            Some(entry.path())
+        } else {
+            None
+        }
+    })
+    .collect::<Vec<_>>();
 
     for dir in entries {
         if let Some(child) = load_metadata(&dir, max_depth).await? {
@@ -173,10 +192,10 @@ pub async fn query_metadata(
                         .await
                         .and_then(|metadata_tree| match metadata_tree {
                             Some(metadata_tree) => Ok(metadata_tree),
-                            None => Err(MetadataError::NotFound(root_node)),
+                            None => Err(MetadataError::NotFound(MetadataQueryKey::Id(root_node))),
                         })
                 }
-                None => Err(MetadataError::NotFound(root_node)),
+                None => Err(MetadataError::NotFound(MetadataQueryKey::Id(root_node))),
             }
         }
     }
@@ -249,5 +268,18 @@ mod tests {
         load_root_children(&dir, 1, &root).await.unwrap();
 
         assert!(root.lock().unwrap().sub_metadatas.is_empty());
+    }
+
+    #[tokio::test]
+    async fn load_root_children_missing_root_dir() {
+        let dir = make_temp_dir().join("does_not_exist");
+
+        let root = Arc::new(Mutex::new(Metadata::<()>::default()));
+        let err = load_root_children(&dir, 1, &root).await.unwrap_err();
+
+        assert!(matches!(
+            err,
+            MetadataError::NotFound(MetadataQueryKey::Root)
+        ));
     }
 }
