@@ -92,6 +92,7 @@ impl MigrationTrait for Migration {
       .values_panic(["User.ManagePerms".into(),"View, create, modify, and delete permission definitions, and manage permission-to-role bindings.".into(), true.into()])
       .values_panic(["User.ManageProfile".into(),"Modify user profile information including avatar, display name, and other personal settings for any user.".into(), true.into()])
       .values_panic(["User.Audit".into(),"View active sessions, IP addresses, and real-time playback activity of other users.".into(), true.into()])
+      .values_panic(["User.SessionManage".into(),"Force sign-out of any user's device sessions (all devices at once).".into(), true.into()])
 
       .values_panic(["Resource.View".into(), "Browse and search media resource entries in the library catalog.".into(), true.into()])
       .values_panic(["Resource.Create".into(), "Add new media resource records to the library database.".into(), true.into()])

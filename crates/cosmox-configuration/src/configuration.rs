@@ -61,6 +61,7 @@ pub struct CosmoxConfiguration {
     pub cache: CacheConfiguration,
     pub log: LogConfiguration,
     pub state: StateConfiguration,
+    pub auth: AuthConfiguration,
     pub proxy: ProxyConfiguration,
     pub qbittorrent: Option<QbittorrentServerConfiguration>,
 }
@@ -107,6 +108,19 @@ pub struct LogConfiguration {
 pub struct StateConfiguration {
     #[serde(default = "crate::default::default_state_path")]
     pub path: String,
+}
+
+/// JWT lifetime and sliding-renewal threshold.
+///
+/// `refresh_threshold_secs` must be strictly smaller than `token_expire_secs`:
+/// a request carrying a token whose remaining lifetime is below the threshold
+/// gets a fresh token back via the `X-New-Token` response header.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct AuthConfiguration {
+    #[serde(default = "crate::default::default_token_expire_secs")]
+    pub token_expire_secs: u64,
+    #[serde(default = "crate::default::default_refresh_threshold_secs")]
+    pub refresh_threshold_secs: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

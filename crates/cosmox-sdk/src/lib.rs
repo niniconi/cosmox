@@ -4,14 +4,15 @@ use std::pin::Pin;
 type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, SdkError>> + Send + 'a>>;
 
 use crate::types::{
-    InitStatus, InitializeConfig, InstallPlugin, LibrariesRelatedTags, Library, LibraryAdd,
-    LibraryDeleteRequest, LibraryModify, LibraryPath, LibraryQueryRequest, LibraryType, Metadata,
-    MetadataExtend, MetadataQueryKey, Permission, PermissionAddRequest, PluginQueryItem,
-    PluginQueryRequest, PushResponse, Resource, ResourceAddRequest, ResourceModifyRequest,
-    ResourceQueryRequest, Role, RoleAddRequest, RoleLinkPermissionAddRequest, ScannerInfo,
-    ScannerStatus, ScannerTaskAddRequest, SearchRequest, SystemInfo, Tag, TagAddRequest,
-    TagCatalogEntry, TagGroup, TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest,
-    TagQueryRequest, User, UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest, UserSignUp,
+    DeviceQueryRequest, DeviceSession, InitStatus, InitializeConfig, InstallPlugin,
+    LibrariesRelatedTags, Library, LibraryAdd, LibraryDeleteRequest, LibraryModify, LibraryPath,
+    LibraryQueryRequest, LibraryType, Metadata, MetadataExtend, MetadataQueryKey, Permission,
+    PermissionAddRequest, PluginQueryItem, PluginQueryRequest, PushResponse, Resource,
+    ResourceAddRequest, ResourceModifyRequest, ResourceQueryRequest, Role, RoleAddRequest,
+    RoleLinkPermissionAddRequest, ScannerInfo, ScannerStatus, ScannerTaskAddRequest, SearchRequest,
+    SystemInfo, Tag, TagAddRequest, TagCatalogEntry, TagGroup, TagGroupAddRequest,
+    TagGroupDeleteRequest, TagGroupQueryRequest, TagQueryRequest, User, UserLogin,
+    UserQueryRequest, UserResp, UserRoleAddRequest, UserSignUp,
 };
 
 pub use error::SdkError;
@@ -65,6 +66,9 @@ pub trait Api {
     fn user_register(&self, payload: UserSignUp) -> ApiFuture<'_, UserResp>;
     fn user_delete(&self, uid: u64) -> ApiFuture<'_, ()>;
     fn user_role_add(&self, payload: UserRoleAddRequest) -> ApiFuture<'_, ()>;
+    fn user_query_devices(&self, params: DeviceQueryRequest) -> ApiFuture<'_, Vec<DeviceSession>>;
+    fn logout_device(&self, did: u64) -> ApiFuture<'_, ()>;
+    fn logout_user(&self, uid: u64) -> ApiFuture<'_, ()>;
 
     fn library_get(&self, lid: u64) -> ApiFuture<'_, Library>;
     fn library_query(&self, params: LibraryQueryRequest) -> ApiFuture<'_, Vec<Library>>;

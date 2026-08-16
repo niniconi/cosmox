@@ -94,6 +94,30 @@ pub struct UserResp {
     pub email: Option<String>,
 }
 
+/// One device session, as returned by `GET /user/devices`. Mirrors
+/// `DeviceSession` on the server side; `uid` identifies the owning user.
+#[derive(Debug, Deserialize)]
+pub struct DeviceSession {
+    pub did: u64,
+    pub uid: Option<u64>,
+    pub user_agent: Option<String>,
+    pub last_login_datetime: NaiveDateTime,
+    pub last_login_ip: String,
+}
+
+/// Filter for `GET /user/devices` (admin/audit view, mirrors the server-side
+/// `DeviceQueryRequest`). Mirrors the `page_helper`-generated fields of the
+/// server struct.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeviceQueryRequest {
+    pub uid: Option<u64>,
+    #[serde(rename = "sort_by")]
+    pub sort: Option<String>,
+    pub page: Option<u64>,
+    #[serde(default = "default_page_size")]
+    pub page_size: u64,
+}
+
 // -- Library --
 
 #[derive(Debug, Deserialize)]

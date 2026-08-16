@@ -33,6 +33,9 @@ cosmox:
     https: "http://proxy.server:8889"
   state:
     path: "test/state"
+  auth:
+    token-expire-secs: 3600
+    refresh-threshold-secs: 900
   qbittorrent:
     server: "http://127.0.0.1:7070"
     username: "admin"

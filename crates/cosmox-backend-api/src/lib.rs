@@ -1,4 +1,7 @@
-use std::marker::PhantomData;
+use std::{
+    marker::PhantomData,
+    sync::{Arc, Mutex},
+};
 
 use cosmox_backend_data::RequestUser;
 
@@ -24,6 +27,15 @@ impl Token {
 pub struct AccessContext {
     pub endpoint: Endpoint,
     pub token: Token,
+    /// Fresh token emitted by sliding renewal; the web adapter attaches it
+    /// to the response as the `X-New-Token` header.
+    ///
+    /// Shared slot: handlers receive a `Clone` of the `Context` inserted
+    /// into the request extensions, and `Arc` keeps both copies pointing at
+    /// the same cell, so the middleware can read back what the access
+    /// check minted on its own copy. `Mutex` keeps the context `Send` for
+    /// adapters that run API calls inside `tokio::spawn`.
+    pub new_token: Arc<Mutex<Option<String>>>,
 }
 
 #[derive(Debug, Default, Clone)]

@@ -42,6 +42,9 @@ pub struct RequestUserInner {
     pub uid: Option<u64>,
     pub roles: Vec<String>,
     pub permissions: Vec<String>,
+    /// jti of the token that authenticated this request; used by logout to
+    /// revoke the owning device session.
+    pub jti: Option<String>,
 }
 pub type RequestUser = Arc<RequestUserInner>;
 

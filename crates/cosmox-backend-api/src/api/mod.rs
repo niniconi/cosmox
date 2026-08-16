@@ -31,6 +31,15 @@ pub enum Endpoint {
     },
     Login,
     Register,
+    QueryDevices {
+        uid: Option<u64>,
+    },
+    LogoutDevice {
+        did: u64,
+    },
+    LogoutUser {
+        uid: u64,
+    },
     UploadAvatar {
         uid: u64,
     },

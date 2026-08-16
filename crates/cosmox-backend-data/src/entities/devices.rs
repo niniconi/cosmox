@@ -13,6 +13,7 @@ pub struct Model {
     pub login_by_uid: Option<u64>,
     pub last_login_datetime: DateTime,
     pub last_login_ip: String,
+    pub current_jti: Option<String>,
     #[sea_orm(
         belongs_to,
         from = "login_by_uid",

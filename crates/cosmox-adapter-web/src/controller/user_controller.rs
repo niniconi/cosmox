@@ -4,7 +4,8 @@ use actix_web::web::Payload;
 use actix_web::{Responder, get, post, web};
 use cosmox_backend_api::api::role_permission::UserRoleAddRequest;
 use cosmox_backend_api::api::user::{
-    UserDeleteRequest, UserError, UserLoginRequest, UserQueryRequest, UserSignUpRequest,
+    DeviceLoginInfo, DeviceQueryRequest, UserDeleteRequest, UserError, UserLoginRequest,
+    UserQueryRequest, UserSignUpRequest,
 };
 use cosmox_backend_api::message::{self};
 use cosmox_backend_api::{Context, api};
@@ -67,13 +68,61 @@ pub async fn get(ctx: web::ReqData<Context<'_>>, uid: web::Path<u64>) -> impl Re
 
 /// Login
 ///
-/// Login by username or email
+/// Login by username or email, binding the device session to the issuing
+/// token so logout can revoke it. The client identity comes from the
+/// request metadata: peer IP and User-Agent header.
 #[post("/login")]
 pub async fn login(
     ctx: web::ReqData<Context<'_>>,
     payload: web::Json<UserLoginRequest>,
+    req: actix_web::HttpRequest,
 ) -> impl Responder {
-    into_message!(api::user::login(&mut ctx.into_inner(), Arc::new(payload.into_inner())).await)
+    let ip = req
+        .connection_info()
+        .realip_remote_addr()
+        .map(|x| x.to_string())
+        .or_else(|| req.peer_addr().map(|addr| addr.ip().to_string()))
+        .unwrap_or_default();
+    let user_agent = req
+        .headers()
+        .get(actix_web::http::header::USER_AGENT)
+        .and_then(|x| x.to_str().ok())
+        .map(|x| x.to_string());
+    let device_info = DeviceLoginInfo { user_agent, ip };
+
+    into_message!(
+        api::user::login(
+            &mut ctx.into_inner(),
+            Arc::new(payload.into_inner()),
+            device_info,
+        )
+        .await
+    )
+}
+
+/// List device sessions by filter (admin/audit view).
+#[get("/devices")]
+pub async fn query_devices(
+    ctx: web::ReqData<Context<'_>>,
+    params: web::Query<DeviceQueryRequest>,
+) -> impl Responder {
+    into_message!(
+        api::user::query_devices(&mut ctx.into_inner(), Arc::new(params.into_inner())).await
+    )
+}
+
+/// Log out one specific device session: own devices are self-service,
+/// other users' devices require the `User.SessionManage` permission.
+#[post("/devices/{did}/logout")]
+pub async fn logout_device(ctx: web::ReqData<Context<'_>>, did: web::Path<u64>) -> impl Responder {
+    into_message!(api::user::logout_device(&mut ctx.into_inner(), *did).await)
+}
+
+/// Log out all device sessions of a user: pass your own uid to sign out
+/// everywhere; manage another user's sessions requires `User.SessionManage`.
+#[post("/{uid}/logout")]
+pub async fn logout_user(ctx: web::ReqData<Context<'_>>, uid: web::Path<u64>) -> impl Responder {
+    into_message!(api::user::logout_user(&mut ctx.into_inner(), *uid).await)
 }
 
 /// upload avatar

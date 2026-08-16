@@ -2,15 +2,15 @@ use crate::{
     Api, ApiFuture,
     error::SdkError,
     types::{
-        InitStatus, InitializeConfig, InstallPlugin, LibrariesRelatedTags, Library, LibraryAdd,
-        LibraryDeleteRequest, LibraryModify, LibraryPath, LibraryQueryRequest, LibraryType,
-        Metadata, MetadataExtend, MetadataQueryKey, Permission, PermissionAddRequest,
-        PluginQueryItem, PluginQueryRequest, PushResponse, Resource, ResourceAddRequest,
-        ResourceModifyRequest, ResourceQueryRequest, Role, RoleAddRequest,
-        RoleLinkPermissionAddRequest, ScannerInfo, ScannerStatus, ScannerTaskAddRequest,
-        SearchRequest, SystemInfo, Tag, TagAddRequest, TagCatalogEntry, TagGroup,
-        TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest, TagQueryRequest, User,
-        UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest, UserSignUp,
+        DeviceQueryRequest, DeviceSession, InitStatus, InitializeConfig, InstallPlugin,
+        LibrariesRelatedTags, Library, LibraryAdd, LibraryDeleteRequest, LibraryModify,
+        LibraryPath, LibraryQueryRequest, LibraryType, Metadata, MetadataExtend, MetadataQueryKey,
+        Permission, PermissionAddRequest, PluginQueryItem, PluginQueryRequest, PushResponse,
+        Resource, ResourceAddRequest, ResourceModifyRequest, ResourceQueryRequest, Role,
+        RoleAddRequest, RoleLinkPermissionAddRequest, ScannerInfo, ScannerStatus,
+        ScannerTaskAddRequest, SearchRequest, SystemInfo, Tag, TagAddRequest, TagCatalogEntry,
+        TagGroup, TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest, TagQueryRequest,
+        User, UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest, UserSignUp,
     },
 };
 
@@ -110,6 +110,30 @@ impl Api for IpcApi {
     }
 
     fn user_role_add(&self, _payload: UserRoleAddRequest) -> ApiFuture<'_, ()> {
+        Box::pin(async {
+            Err(SdkError::Internal(
+                "IPC transport not implemented yet".into(),
+            ))
+        })
+    }
+
+    fn user_query_devices(&self, _params: DeviceQueryRequest) -> ApiFuture<'_, Vec<DeviceSession>> {
+        Box::pin(async {
+            Err(SdkError::Internal(
+                "IPC transport not implemented yet".into(),
+            ))
+        })
+    }
+
+    fn logout_device(&self, _did: u64) -> ApiFuture<'_, ()> {
+        Box::pin(async {
+            Err(SdkError::Internal(
+                "IPC transport not implemented yet".into(),
+            ))
+        })
+    }
+
+    fn logout_user(&self, _uid: u64) -> ApiFuture<'_, ()> {
         Box::pin(async {
             Err(SdkError::Internal(
                 "IPC transport not implemented yet".into(),

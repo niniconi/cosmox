@@ -11,7 +11,7 @@ use crate::default::default_config_path;
 mod configuration;
 mod default;
 
-pub use configuration::{Configuration, ScannerConfiguration};
+pub use configuration::{AuthConfiguration, Configuration, ScannerConfiguration};
 
 static GLOBAL_CONFIGURATION: LazyLock<Configuration> = LazyLock::new(|| {
     let file = {

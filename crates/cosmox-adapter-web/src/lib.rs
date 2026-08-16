@@ -52,6 +52,7 @@ pub fn server(
                 header::CONTENT_LENGTH,
                 header::ACCEPT_RANGES,
                 header::SERVER,
+                header::HeaderName::from_static("x-new-token"),
             ])
             .max_age(3600);
 
@@ -104,6 +105,9 @@ pub fn server(
                     .service(
                         web::scope("/user")
                             .service(user_controller::login)
+                            .service(user_controller::query_devices)
+                            .service(user_controller::logout_device)
+                            .service(user_controller::logout_user)
                             .service(user_controller::register)
                             .service(user_controller::delete)
                             .service(user_controller::query)

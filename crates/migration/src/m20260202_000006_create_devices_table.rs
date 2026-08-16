@@ -26,6 +26,7 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(Devices::LastLoginIp).string().not_null())
+                    .col(ColumnDef::new(Devices::CurrentJti).string_len(64).null())
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk-devices-login_by_uid")
@@ -54,6 +55,7 @@ enum Devices {
     LoginByUid,
     LastLoginDatetime,
     LastLoginIp,
+    CurrentJti,
 }
 
 #[derive(DeriveIden)]

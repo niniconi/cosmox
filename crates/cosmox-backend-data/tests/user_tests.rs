@@ -6,10 +6,20 @@ use std::sync::Arc;
 
 use common::TestContext;
 
-use cosmox_backend_data::services::user_service::{
-    self, UserError, UserIdent, UserLoginIdent, UserLoginRequest, UserQueryRequest,
-    UserSignUpRequest,
+use cosmox_backend_data::services::{
+    device_service::DeviceLoginInfo,
+    user_service::{
+        self, UserError, UserIdent, UserLoginIdent, UserLoginRequest, UserQueryRequest,
+        UserSignUpRequest,
+    },
 };
+
+fn test_device_info() -> DeviceLoginInfo {
+    DeviceLoginInfo {
+        user_agent: None,
+        ip: "127.0.0.1".into(),
+    }
+}
 
 #[tokio::test]
 pub async fn sign_up_and_get_user() {
@@ -90,6 +100,7 @@ pub async fn login_with_username() {
             ident: UserLoginIdent::Username("loginuser".into()),
             password: "Pass123!".into(),
         }),
+        &test_device_info(),
     )
     .await
     .expect("login failed");
@@ -117,6 +128,7 @@ pub async fn login_with_email() {
             ident: UserLoginIdent::Email("email-login@example.com".into()),
             password: "Pass123!".into(),
         }),
+        &test_device_info(),
     )
     .await
     .expect("login failed");
@@ -144,6 +156,7 @@ pub async fn login_wrong_password() {
             ident: UserLoginIdent::Username("badpwd".into()),
             password: "WrongPass!".into(),
         }),
+        &test_device_info(),
     )
     .await
     .unwrap_err();

@@ -1,32 +1,55 @@
+use std::sync::Mutex;
+
 use reqwest::header::{self, HeaderValue};
 
 use crate::{
     Api, ApiFuture,
     error::SdkError,
     types::{
-        InitStatus, InitializeConfig, InstallPlugin, LibrariesRelatedTags, Library, LibraryAdd,
-        LibraryDeleteRequest, LibraryModify, LibraryPath, LibraryQueryRequest, LibraryType,
-        Message, MessagePayload, Metadata, MetadataExtend, MetadataQueryKey, Permission,
-        PermissionAddRequest, PluginQueryItem, PluginQueryRequest, PushResponse, Resource,
-        ResourceAddRequest, ResourceModifyRequest, ResourceQueryRequest, Role, RoleAddRequest,
-        RoleLinkPermissionAddRequest, ScannerInfo, ScannerStatus, ScannerTaskAddRequest,
-        SearchRequest, SystemInfo, Tag, TagAddRequest, TagCatalogEntry, TagGroup,
-        TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest, TagQueryRequest, User,
-        UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest, UserSignUp,
+        DeviceQueryRequest, DeviceSession, InitStatus, InitializeConfig, InstallPlugin,
+        LibrariesRelatedTags, Library, LibraryAdd, LibraryDeleteRequest, LibraryModify,
+        LibraryPath, LibraryQueryRequest, LibraryType, Message, MessagePayload, Metadata,
+        MetadataExtend, MetadataQueryKey, Permission, PermissionAddRequest, PluginQueryItem,
+        PluginQueryRequest, PushResponse, Resource, ResourceAddRequest, ResourceModifyRequest,
+        ResourceQueryRequest, Role, RoleAddRequest, RoleLinkPermissionAddRequest, ScannerInfo,
+        ScannerStatus, ScannerTaskAddRequest, SearchRequest, SystemInfo, Tag, TagAddRequest,
+        TagCatalogEntry, TagGroup, TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest,
+        TagQueryRequest, User, UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest,
+        UserSignUp,
     },
 };
+
+/// Response header carrying the slid-renewed token. Mirrors the server-side
+/// `NEW_TOKEN_HEADER` in `cosmox-adapter-web`.
+const NEW_TOKEN_HEADER: &str = "X-New-Token";
 
 pub struct HttpApi {
     pub base_url: String,
     client: reqwest::Client,
-    token: Option<String>,
+    token: Mutex<Option<String>>,
 }
 
 impl HttpApi {
+    /// RFC 7235 `Authorization: Bearer <token>`. The server's token extractor
+    /// accepts both this and a bare token, but bare is deprecated there.
     fn auth_header(&self) -> Option<HeaderValue> {
-        self.token
-            .as_ref()
-            .and_then(|t| HeaderValue::from_str(t).ok())
+        let token = self.token.lock().unwrap();
+        let value = token.as_deref().map(|t| format!("Bearer {t}"))?;
+        HeaderValue::from_str(&value).ok()
+    }
+
+    /// Consume the server's sliding-renewal header: when the remaining
+    /// lifetime drops below the threshold, the server re-signs the same jti
+    /// and returns it in `X-New-Token`, which must replace the local token.
+    fn refresh_token(&self, resp: &reqwest::Response) {
+        let Some(new_token) = resp
+            .headers()
+            .get(NEW_TOKEN_HEADER)
+            .and_then(|v| v.to_str().ok())
+        else {
+            return;
+        };
+        *self.token.lock().unwrap() = Some(new_token.to_string());
     }
 
     async fn get<T: serde::de::DeserializeOwned + std::fmt::Debug>(
@@ -39,6 +62,7 @@ impl HttpApi {
         }
         let resp = req.send().await.map_err(classify_reqwest_error)?;
         check_status(&resp)?;
+        self.refresh_token(&resp);
         let msg: Message<T> = resp
             .json()
             .await
@@ -60,6 +84,7 @@ impl HttpApi {
         }
         let resp = req.send().await.map_err(classify_reqwest_error)?;
         check_status(&resp)?;
+        self.refresh_token(&resp);
         let msg: Message<T> = resp
             .json()
             .await
@@ -83,6 +108,7 @@ impl HttpApi {
         }
         let resp = req.send().await.map_err(classify_reqwest_error)?;
         check_status(&resp)?;
+        self.refresh_token(&resp);
         let msg: Message<T> = resp
             .json()
             .await
@@ -100,6 +126,7 @@ impl HttpApi {
         }
         let resp = req.send().await.map_err(classify_reqwest_error)?;
         check_status(&resp)?;
+        self.refresh_token(&resp);
         let msg: Message<T> = resp
             .json()
             .await
@@ -122,6 +149,7 @@ impl HttpApi {
         }
         let resp = req.send().await.map_err(classify_reqwest_error)?;
         check_status(&resp)?;
+        self.refresh_token(&resp);
         let msg: Message<T> = resp
             .json()
             .await
@@ -136,6 +164,7 @@ impl HttpApi {
         }
         let resp = req.send().await.map_err(classify_reqwest_error)?;
         check_status(&resp)?;
+        self.refresh_token(&resp);
         resp.text()
             .await
             .map_err(|e| SdkError::Internal(e.to_string()))
@@ -148,6 +177,7 @@ impl HttpApi {
         }
         let resp = req.send().await.map_err(classify_reqwest_error)?;
         check_status(&resp)?;
+        self.refresh_token(&resp);
         Ok(resp
             .bytes()
             .await
@@ -229,26 +259,26 @@ impl Api for HttpApi {
                 .cookie_store(true)
                 .build()
                 .expect("reqwest Client::builder()"),
-            token: None,
+            token: Mutex::new(None),
         }
     }
 
     fn set_token(&mut self, token: String) {
-        self.token = Some(token);
+        *self.token.lock().unwrap() = Some(token);
     }
 
     fn get_token(&self) -> Option<String> {
-        self.token.clone()
+        self.token.lock().unwrap().clone()
     }
 
     fn logout(&mut self) {
-        self.token = None;
+        *self.token.lock().unwrap() = None;
     }
 
     fn login(&mut self, payload: UserLogin) -> ApiFuture<'_, ()> {
         Box::pin(async move {
             let token: String = self.post("/user/login", &payload).await?;
-            self.token = Some(token);
+            *self.token.lock().unwrap() = Some(token);
             Ok(())
         })
     }
@@ -304,6 +334,21 @@ impl Api for HttpApi {
 
     fn user_role_add(&self, payload: UserRoleAddRequest) -> ApiFuture<'_, ()> {
         Box::pin(async move { self.post("/user/role/add", &payload).await })
+    }
+
+    fn user_query_devices(&self, params: DeviceQueryRequest) -> ApiFuture<'_, Vec<DeviceSession>> {
+        Box::pin(async move {
+            let qs = build_page_query(&params);
+            self.get(&format!("/user/devices{qs}")).await
+        })
+    }
+
+    fn logout_device(&self, did: u64) -> ApiFuture<'_, ()> {
+        Box::pin(async move { self.post_path(&format!("/user/devices/{did}/logout")).await })
+    }
+
+    fn logout_user(&self, uid: u64) -> ApiFuture<'_, ()> {
+        Box::pin(async move { self.post_path(&format!("/user/{uid}/logout")).await })
     }
 
     fn library_get(&self, lid: u64) -> ApiFuture<'_, Library> {

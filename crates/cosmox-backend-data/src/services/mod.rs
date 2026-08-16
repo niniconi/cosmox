@@ -1,6 +1,8 @@
 pub mod auth;
+pub mod device_service;
 pub mod file_service;
 pub mod init_service;
+pub mod jwt;
 pub mod libraries_service;
 pub mod metadata_service;
 pub mod resource_service;

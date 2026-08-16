@@ -43,3 +43,11 @@ pub fn default_state_path() -> String {
     return "/Library/Application Support/cosmox-server/state".to_string();
     "/var/lib/cosmox-server/state".to_string()
 }
+
+pub fn default_token_expire_secs() -> u64 {
+    3600
+}
+
+pub fn default_refresh_threshold_secs() -> u64 {
+    900
+}

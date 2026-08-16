@@ -19,7 +19,9 @@ use crate::{
     get_db_connection,
     services::{
         auth,
+        device_service::{self, DeviceError, DeviceLoginInfo, DeviceQueryRequest, DeviceSession},
         file_service::{self, FileError, PushResponse},
+        jwt,
     },
 };
 
@@ -299,17 +301,21 @@ pub async fn sign_up_db(
 }
 
 /// Login
-pub async fn login(payload: Arc<UserLoginRequest>) -> Result<String, UserError> {
+pub async fn login(
+    payload: Arc<UserLoginRequest>,
+    device_info: DeviceLoginInfo,
+) -> Result<String, UserError> {
     if let Err(err) = payload.validate() {
         return Err(UserError::Validation(err.errors().clone()));
     }
     let db = get_db_connection().await;
-    login_db(&db, payload).await
+    login_db(&db, payload, &device_info).await
 }
 
 pub async fn login_db(
     db: &DatabaseConnection,
     payload: Arc<UserLoginRequest>,
+    device_info: &DeviceLoginInfo,
 ) -> Result<String, UserError> {
     log::info!("user {} attempt login", payload.ident);
     let user = match &payload.ident {
@@ -331,25 +337,100 @@ pub async fn login_db(
             })?,
     };
 
-    if let Some(user) = user.first() {
-        match auth::verify_password(&payload.password, &user.password) {
-            Ok(_) => {
-                // generate token
-                auth::generate_jwt(&user.uid.to_string(), auth::get_jwt_secret_key())
-                    .inspect_err(|err| log::error!("{err}"))
-                    .map_err(|_err| UserError::InternalError("Token generate error".to_string()))
+    let Some(user) = user.first() else {
+        return Err(UserError::InvalidUsernamePassword);
+    };
+
+    auth::verify_password(&payload.password, &user.password).map_err(|err| match err {
+        argon2::password_hash::Error::Password => UserError::InvalidUsernamePassword,
+        _ => UserError::LoginFailed(payload.ident.to_string()),
+    })?;
+
+    // Register the device session before issuing the token: the jti must be
+    // findable by access checks and revocable by logout.
+    let jti = jwt::generate_jti();
+    device_service::upsert_device_session_db(db, user.uid, &jti, device_info)
+        .await
+        .map_err(|err| match err {
+            DeviceError::InternalError(msg) => UserError::InternalError(msg),
+            DeviceError::NotFound => {
+                UserError::InternalError("Device session not found".to_string())
             }
-            Err(err) => {
-                if let argon2::password_hash::Error::Password = err {
-                    Err(UserError::InvalidUsernamePassword)
-                } else {
-                    Err(UserError::LoginFailed(payload.ident.to_string()))
-                }
-            }
-        }
-    } else {
-        Err(UserError::InvalidUsernamePassword)
-    }
+        })?;
+
+    let expire_secs = Configuration::get_global_configuration()
+        .cosmox
+        .auth
+        .token_expire_secs;
+    let token = jwt::generate_jwt(
+        &user.uid.to_string(),
+        &jti,
+        jwt::get_jwt_secret_key(),
+        expire_secs,
+    )
+    .inspect_err(|err| log::error!("{err}"))
+    .map_err(|_err| UserError::InternalError("Token generate error".to_string()))?;
+
+    Ok(token)
+}
+
+/// Revoke every device session of the user (logout everywhere).
+pub async fn logout_all(uid: u64) -> Result<(), UserError> {
+    let db = get_db_connection().await;
+    logout_all_db(&db, uid).await
+}
+
+pub async fn logout_all_db(db: &DatabaseConnection, uid: u64) -> Result<(), UserError> {
+    device_service::logout_all_device_sessions_db(db, uid)
+        .await
+        .map_err(|err| match err {
+            DeviceError::NotFound => UserError::NotFound(UserIdent::Uid(uid)),
+            DeviceError::InternalError(msg) => UserError::InternalError(msg),
+        })
+}
+
+/// List device sessions filtered by `params` (admin/audit view; the API
+/// layer gates this behind the `User.Audit` permission).
+pub async fn query_devices(
+    params: Arc<DeviceQueryRequest>,
+) -> Result<(Vec<DeviceSession>, Pagination), UserError> {
+    let db = get_db_connection().await;
+    query_devices_db(&db, params).await
+}
+
+pub async fn query_devices_db(
+    db: &DatabaseConnection,
+    params: Arc<DeviceQueryRequest>,
+) -> Result<(Vec<DeviceSession>, Pagination), UserError> {
+    device_service::query_device_sessions_db(db, params)
+        .await
+        .map_err(|err| match err {
+            // The query path never raises `NotFound`; this arm exists only
+            // to keep the match exhaustive.
+            DeviceError::NotFound => UserError::InternalError("Device session not found".into()),
+            DeviceError::InternalError(msg) => UserError::InternalError(msg),
+        })
+}
+
+/// Log out one specific device session. `uid` is the owning user of `did`
+/// (resolved by the caller); the two-column bound keeps the deletion
+/// scoped to that owner regardless of caller privileges.
+pub async fn logout_device(uid: u64, did: u64) -> Result<(), UserError> {
+    let db = get_db_connection().await;
+    logout_device_db(&db, uid, did).await
+}
+
+pub async fn logout_device_db(
+    db: &DatabaseConnection,
+    uid: u64,
+    did: u64,
+) -> Result<(), UserError> {
+    device_service::logout_device_by_did_db(db, uid, did)
+        .await
+        .map_err(|err| match err {
+            DeviceError::NotFound => UserError::NotFound(UserIdent::Uid(uid)),
+            DeviceError::InternalError(msg) => UserError::InternalError(msg),
+        })
 }
 
 pub async fn delete(uid: u64) -> Result<(), UserError> {
