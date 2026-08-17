@@ -129,7 +129,10 @@ async fn store_path_mapping_db<P: AsRef<Path>>(
 }
 
 async fn local_file_handler(url: &Url) -> Result<PathBuf, FileError> {
-    Ok(PathBuf::from(url.path()))
+    // `url.path()` returns the percent-encoded URL path (e.g. `/a%20b`).
+    // `to_file_path()` decodes it into the real on-disk path.
+    url.to_file_path()
+        .map_err(|_| FileError::InternalError(format!("Invalid file url: {url}")))
 }
 
 async fn http_file_handler(url: &Url, id: u64) -> Result<PathBuf, FileError> {
