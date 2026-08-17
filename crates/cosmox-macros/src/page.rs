@@ -2,7 +2,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::ItemStruct;
 
-pub fn expand_attr_page_helper(input: ItemStruct) -> syn::Result<TokenStream> {
+pub fn expand(input: ItemStruct) -> syn::Result<TokenStream> {
     let attrs = input.attrs;
     let fields = input.fields.iter();
     let ident = input.ident;
@@ -53,7 +53,7 @@ mod tests {
             pub page_size: u64,
           }
         };
-        let output = expand_attr_page_helper(input).unwrap();
+        let output = expand(input).unwrap();
         println!("{}", output);
         assert_eq!(expect.to_string(), output.to_string())
     }

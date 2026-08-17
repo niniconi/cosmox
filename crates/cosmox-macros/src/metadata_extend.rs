@@ -47,7 +47,7 @@ fn classify(ty: &Type) -> (FieldKind, Option<&Type>) {
     }
 }
 
-pub fn expand_metadata_extend(input: DeriveInput) -> syn::Result<TokenStream> {
+pub fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
     let mut extend_key: Option<String> = None;
     for attr in &input.attrs {
         if !attr.path().is_ident("extend") {
@@ -228,7 +228,7 @@ mod tests {
                 }
             }
         };
-        let output = expand_metadata_extend(input).unwrap();
+        let output = expand(input).unwrap();
         println!("{}", output);
         assert_eq!(expect.to_string(), output.to_string())
     }
@@ -240,6 +240,6 @@ mod tests {
                 pub field: String,
             }
         };
-        assert!(expand_metadata_extend(input).is_err());
+        assert!(expand(input).is_err());
     }
 }

@@ -1,10 +1,7 @@
 use proc_macro::TokenStream;
 use syn::{DeriveInput, ItemMod, ItemStruct, parse_macro_input};
 
-use crate::{
-    actix_web_error::ActixWebErrorInput, metadata_extend::expand_metadata_extend,
-    page::expand_attr_page_helper, plugin::PluginAttr,
-};
+use crate::plugin::PluginAttr;
 
 extern crate proc_macro;
 mod actix_web_error;
@@ -26,8 +23,8 @@ mod utils;
 // }
 #[proc_macro]
 pub fn actix_web_error(input: TokenStream) -> TokenStream {
-    parse_macro_input!(input as ActixWebErrorInput)
-        .expand()
+    let input = parse_macro_input!(input as actix_web_error::ActixWebErrorInput);
+    actix_web_error::expand(input)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }
@@ -39,7 +36,7 @@ pub fn actix_web_error(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(MetadataExtend, attributes(extend))]
 pub fn metadata_extend_derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    expand_metadata_extend(input)
+    metadata_extend::expand(input)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }
@@ -59,7 +56,7 @@ pub fn plugin(attr: TokenStream, input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn page_helper(_attr: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as ItemStruct);
-    expand_attr_page_helper(input)
+    page::expand(input)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }

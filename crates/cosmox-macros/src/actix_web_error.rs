@@ -15,73 +15,73 @@ pub struct ActixWebErrorInput {
     enum_name: Ident,
     variants: Vec<ActixWebError>,
 }
-impl ActixWebErrorInput {
-    pub fn expand(&self) -> syn::Result<TokenStream> {
-        let enum_name = &self.enum_name;
 
-        let mut status_code_matchs = Vec::with_capacity(self.variants.len());
-        let mut error_response_matchs = Vec::with_capacity(self.variants.len());
+pub fn expand(input: ActixWebErrorInput) -> syn::Result<TokenStream> {
+    let enum_name = &input.enum_name;
 
-        for ActixWebError {
-            name,
-            code,
-            delimiter,
-        } in &self.variants
-        {
-            let parten = match delimiter {
-                Delimiter::None => quote! {
-                  #enum_name::#name
-                },
-                Delimiter::Parenthesis => quote! {
-                  #enum_name::#name (..)
-                },
-                Delimiter::Brace => quote! {
-                  #enum_name::#name {..}
-                },
-                _ => unreachable!(),
-            };
+    let mut status_code_matchs = Vec::with_capacity(input.variants.len());
+    let mut error_response_matchs = Vec::with_capacity(input.variants.len());
 
-            status_code_matchs.push(quote! {
-              #parten => actix_web::http::StatusCode::from_u16(#code).unwrap()
-            });
-            error_response_matchs.push(quote! {
-              #parten => actix_web::HttpResponse::build(self.status_code()).json(message::Message {
-                code: #code.to_string(),
-                message: self.to_string(),
-                status: status,
-                datetime: datetime,
-                payload: Option::<message::MessagePayload<u8>>::None,
-                pagination: pagination,
-              })
-            });
-        }
-
-        let generated_status_code_fn = quote! {
-            fn status_code(&self) -> actix_web::http::StatusCode{
-                match self {
-                    #(#status_code_matchs, )*
-                }
-            }
-        };
-        let generated_error_response_fn = quote! {
-            fn error_response(&self, status: String, datetime: chrono::DateTime<chrono::Utc>, pagination: Option<common::message::Pagination>) -> actix_web::HttpResponse {
-                match self {
-                    #(#error_response_matchs, )*
-                }
-            }
+    for ActixWebError {
+        name,
+        code,
+        delimiter,
+    } in &input.variants
+    {
+        let parten = match delimiter {
+            Delimiter::None => quote! {
+              #enum_name::#name
+            },
+            Delimiter::Parenthesis => quote! {
+              #enum_name::#name (..)
+            },
+            Delimiter::Brace => quote! {
+              #enum_name::#name {..}
+            },
+            _ => unreachable!(),
         };
 
-        let response_error_impl = quote! {
-            impl crate::message::InnerResponseError for #enum_name {
-                #generated_status_code_fn
-                #generated_error_response_fn
-            }
-        };
-
-        Ok(quote! {
-            #response_error_impl
-        })
+        status_code_matchs.push(quote! {
+          #parten => actix_web::http::StatusCode::from_u16(#code).unwrap()
+        });
+        error_response_matchs.push(quote! {
+          #parten => actix_web::HttpResponse::build(self.status_code()).json(message::Message {
+            code: #code.to_string(),
+            message: self.to_string(),
+            status: status,
+            datetime: datetime,
+            payload: Option::<message::MessagePayload<u8>>::None,
+            pagination: pagination,
+          })
+        });
     }
+
+    let generated_status_code_fn = quote! {
+        fn status_code(&self) -> actix_web::http::StatusCode{
+            match self {
+                #(#status_code_matchs, )*
+            }
+        }
+    };
+
+    let generated_error_response_fn = quote! {
+        fn error_response(&self, status: String, datetime: chrono::DateTime<chrono::Utc>, pagination: Option<common::message::Pagination>) -> actix_web::HttpResponse {
+            match self {
+                #(#error_response_matchs, )*
+            }
+        }
+    };
+
+    let response_error_impl = quote! {
+        impl crate::message::InnerResponseError for #enum_name {
+            #generated_status_code_fn
+            #generated_error_response_fn
+        }
+    };
+
+    Ok(quote! {
+        #response_error_impl
+    })
 }
 
 impl Parse for ActixWebError {
