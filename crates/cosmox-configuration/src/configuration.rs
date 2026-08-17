@@ -136,3 +136,61 @@ pub struct QbittorrentServerConfiguration {
     pub username: String,
     pub password: String,
 }
+
+/// Whole-configuration fallback used when application.yaml is entirely
+/// missing. Missing individual fields inside an existing file are covered
+/// by the per-field `#[serde(default = ...)]` attributes instead.
+impl Default for Configuration {
+    fn default() -> Self {
+        Self {
+            server: ServerConfiguration {
+                host: "127.0.0.1".to_string(),
+                port: 8080,
+            },
+            database: DatabaseConfiguration {
+                host: "127.0.0.1".to_string(),
+                port: 3306,
+                user: "root".to_string(),
+                password: "123456".to_string(),
+                database: "cosmox".to_string(),
+                option: None,
+            },
+            cosmox: CosmoxConfiguration {
+                name: "cosmox server".to_string(),
+                scanner: ScannerConfiguration {
+                    metadata_path: "metadata".to_string(),
+                    max_threads: None,
+                },
+                library: LibraryConfiguration {
+                    path: "library".to_string(),
+                },
+                data: DataConfiguration {
+                    path: crate::default::default_data_path(),
+                },
+                plugin: PluginConfiguration {
+                    path: crate::default::default_plugin_path(),
+                },
+                cache: CacheConfiguration {
+                    path: crate::default::default_cache_path(),
+                },
+                log: LogConfiguration {
+                    path: crate::default::default_log_path(),
+                },
+                state: StateConfiguration {
+                    path: crate::default::default_state_path(),
+                },
+                auth: AuthConfiguration {
+                    token_expire_secs: crate::default::default_token_expire_secs(),
+                    refresh_threshold_secs: crate::default::default_refresh_threshold_secs(),
+                },
+                proxy: ProxyConfiguration {
+                    http_proxy: None,
+                    https_proxy: None,
+                    socks5_proxy: None,
+                },
+                qbittorrent: None,
+            },
+            state: State::default(),
+        }
+    }
+}

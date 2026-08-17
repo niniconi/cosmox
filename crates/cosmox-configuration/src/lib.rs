@@ -25,12 +25,22 @@ static GLOBAL_CONFIGURATION: LazyLock<Configuration> = LazyLock::new(|| {
             File::with_name("application.yaml").required(true)
         }
     };
-    let config = ConfigLoader::builder()
-        .add_source(file)
-        .build()
-        .unwrap()
-        .try_deserialize::<Configuration>()
-        .unwrap();
+    let config = match ConfigLoader::builder().add_source(file).build() {
+        Ok(loader) => match loader.try_deserialize::<Configuration>() {
+            Ok(config) => config,
+            Err(err) => {
+                // Config file exists but failed to parse: fail loudly, no silent fallback.
+                panic!("failed to parse configuration: {err}")
+            }
+        },
+        // Config file missing: fall back to the whole default configuration.
+        // Tests run with cwd inside the crate dir, where no application.yaml
+        // is visible, so this branch is always taken there.
+        Err(err) => {
+            log::error!("failed to load configuration, falling back to defaults: {err}");
+            Configuration::default()
+        }
+    };
 
     config
         .state
