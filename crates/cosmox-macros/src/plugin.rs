@@ -881,10 +881,10 @@ fn generate_plugin(
     let output = quote! {
         #module
 
-        mod __plugin {
+        const _: () = {
             use cosmox_api::{event::cond::EventCond, handle::ToView};
 
-            pub(crate) struct Plugin;
+            struct Plugin;
 
             impl cosmox_api::api::bindings::Guest for Plugin {
                 fn run() {
@@ -977,9 +977,7 @@ fn generate_plugin(
             }
 
             cosmox_api::api::bindings::export!(Plugin);
-        }
-
-        pub(crate) use __plugin::Plugin;
+        };
     };
     Ok(output)
 }
@@ -1059,9 +1057,9 @@ mod tests {
         quote! {
             #module
 
-            mod __plugin {
+            const _: () = {
                 use cosmox_api::{event::cond::EventCond, handle::ToView};
-                pub(crate) struct Plugin;
+                struct Plugin;
 
                 impl cosmox_api::api::bindings::Guest for Plugin {
                     fn run() { #init }
@@ -1152,9 +1150,7 @@ mod tests {
                 }
 
                 cosmox_api::api::bindings::export!(Plugin);
-            }
-
-            pub(crate) use __plugin::Plugin;
+            };
         }
     }
 
