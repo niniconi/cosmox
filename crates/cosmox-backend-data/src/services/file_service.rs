@@ -228,12 +228,14 @@ pub async fn push_item_link(link: Url) -> Result<u64, anyhow::Error> {
 
 pub async fn push_item_link_db(db: &DatabaseConnection, link: Url) -> Result<u64, anyhow::Error> {
     let link_string = link.to_string();
+    let path_hash = sha256_hex(&link_string);
 
     // Fast path: reuse the existing pmid when the path is already registered.
-    // MySQL has no RETURNING, so the unique `path` constraint plus TryInsert
-    // covers the racy insert below (losing runner fetches the winner's pmid).
+    // MySQL has no RETURNING, so the unique `path_hash` constraint plus
+    // TryInsert covers the racy insert below (losing runner fetches the
+    // winner's pmid).
     if let Some(existing) = path_mappings::Entity::find()
-        .filter(path_mappings::Column::Path.eq(&link_string))
+        .filter(path_mappings::Column::PathHash.eq(&path_hash))
         .one(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
@@ -244,11 +246,12 @@ pub async fn push_item_link_db(db: &DatabaseConnection, link: Url) -> Result<u64
 
     let path_mapping = path_mappings::ActiveModel {
         path: Set(link_string),
+        path_hash: Set(path_hash.clone()),
         mime_type: Set("external".to_string()),
         ..Default::default()
     };
     let inserted = path_mappings::Entity::insert(path_mapping)
-        .on_conflict_do_nothing_on([path_mappings::Column::Path])
+        .on_conflict_do_nothing_on([path_mappings::Column::PathHash])
         .exec(db)
         .await
         .inspect_err(|err| log::error!("{err}"))
@@ -259,7 +262,7 @@ pub async fn push_item_link_db(db: &DatabaseConnection, link: Url) -> Result<u64
         // Lost a concurrent insert race; the unique constraint rejected ours.
         TryInsertResult::Conflicted => {
             let existing = path_mappings::Entity::find()
-                .filter(path_mappings::Column::Path.eq(link.to_string()))
+                .filter(path_mappings::Column::PathHash.eq(&path_hash))
                 .one(db)
                 .await
                 .inspect_err(|err| log::error!("{err}"))
@@ -275,6 +278,14 @@ pub async fn push_item_link_db(db: &DatabaseConnection, link: Url) -> Result<u64
         }
         TryInsertResult::Empty => unreachable!("single-model insert never yields Empty"),
     }
+}
+
+/// SHA-256 hex digest, lowercase — matches the SQL-side `SHA2(value, 256)`
+/// so rows written from Rust and rows written from SQL compare equal.
+fn sha256_hex(input: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(input.as_bytes());
+    digest.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 pub async fn push_item_octet_stream<S, E>(payload: S) -> Result<PushResponse, FileError>

@@ -20,7 +20,12 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(PathMappings::Path)
-                            .string()
+                            .string_len(8192)
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(PathMappings::PathHash)
+                            .char_len(64)
                             .not_null()
                             .unique_key(),
                     )
@@ -42,5 +47,6 @@ enum PathMappings {
     Table,
     Pmid,
     Path,
+    PathHash,
     MimeType,
 }

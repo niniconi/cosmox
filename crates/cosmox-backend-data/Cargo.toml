@@ -26,6 +26,7 @@ reqwest = { workspace = true, features = ["rustls", "http2", "charset", "system-
 rkyv = { workspace = true, features = ["alloc", "bytecheck", "std"] }
 sea-orm = { workspace = true, features = ["sqlx-mysql", "runtime-tokio-rustls", "macros", "with-chrono"] }
 serde = { workspace = true, features = ["alloc", "derive", "rc", "serde_derive", "std"] }
+sha2 = { workspace = true }
 sqlx = { workspace = true, features = ["mysql", "macros", "runtime-tokio-rustls", "chrono", "uuid", "json"] }
 sysinfo = { workspace = true }
 thiserror = { workspace = true }

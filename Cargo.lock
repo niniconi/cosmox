@@ -1759,6 +1759,7 @@ dependencies = [
  "rkyv 0.8.16",
  "sea-orm",
  "serde",
+ "sha2",
  "sqlx",
  "sysinfo",
  "thiserror 2.0.18",
