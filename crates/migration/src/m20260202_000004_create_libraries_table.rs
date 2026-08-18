@@ -19,7 +19,11 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(Libraries::Name).string().null())
-                    .col(ColumnDef::new(Libraries::Description).string().null())
+                    .col(
+                        ColumnDef::new(Libraries::Description)
+                            .string_len(512)
+                            .null(),
+                    )
                     .col(
                         ColumnDef::new(Libraries::CreateDatetime)
                             .date_time()

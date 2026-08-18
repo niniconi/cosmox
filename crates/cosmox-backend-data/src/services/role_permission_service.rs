@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     entities::{permissions, roles, roles_related_permissions, users_related_roles},
     get_db_connection,
+    services::{DESCRIPTION_MAX_CHARS, truncate_description},
 };
 
 #[derive(Clone)]
@@ -177,7 +178,10 @@ pub async fn add_permission_db(
 ) -> Result<(), AclError> {
     let permission = permissions::ActiveModel {
         name: Set(permission.name),
-        description: Set(permission.description),
+        description: Set(truncate_description(
+            permission.description,
+            DESCRIPTION_MAX_CHARS,
+        )),
         ..Default::default()
     };
 

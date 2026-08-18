@@ -19,7 +19,7 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(Resources::Name).string().null())
-                    .col(ColumnDef::new(Resources::Description).string().null())
+                    .col(ColumnDef::new(Resources::Description).string_len(512).null())
                     .col(ColumnDef::new(Resources::Lid).big_unsigned().null())
                     .col(
                         ColumnDef::new(Resources::CreateDatetime)

@@ -19,7 +19,7 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(Roles::Name).string().not_null().unique_key())
-                    .col(ColumnDef::new(Roles::Description).string().null())
+                    .col(ColumnDef::new(Roles::Description).string_len(512).null())
                     .col(
                         ColumnDef::new(Roles::Builtin)
                             .boolean()

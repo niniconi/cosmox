@@ -19,6 +19,7 @@ use crate::{
     define::Type,
     entities::{libraries, libraries_related_tags, library_paths, types},
     get_db_connection,
+    services::{DESCRIPTION_MAX_CHARS, truncate_description},
 };
 
 /// Errors related to library (collection of media files) operations.
@@ -128,7 +129,10 @@ pub async fn create_library_with_tags_and_paths_db(
                 let current_datetime = Utc::now().naive_utc();
                 let library = libraries::ActiveModel {
                     name: Set(Some(payload.name.clone())),
-                    description: Set(payload.description.clone()),
+                    description: Set(truncate_description(
+                        payload.description.clone(),
+                        DESCRIPTION_MAX_CHARS,
+                    )),
                     create_datetime: Set(current_datetime),
                     last_update_datetime: Set(current_datetime),
                     create_by_uid: Set(uid),
@@ -419,7 +423,10 @@ pub async fn modify_library_db(
         None => NotSet,
     };
     let description = match payload.description {
-        Some(description) => Set(Some(description)),
+        Some(description) => Set(truncate_description(
+            Some(description),
+            DESCRIPTION_MAX_CHARS,
+        )),
         None => NotSet,
     };
     let last_update_datetime = Set(current_datetime);

@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     entities::{resources, resources_related_tags},
     get_db_connection,
+    services::{DESCRIPTION_MAX_CHARS, truncate_description},
 };
 
 /// Errors related to individual media file (resource) operations.
@@ -118,7 +119,10 @@ pub async fn add_resource_db(
     let current_datetime = Utc::now().naive_utc();
     let resource = resources::ActiveModel {
         name: Set(Some(payload.name.clone())),
-        description: Set(payload.description),
+        description: Set(truncate_description(
+            payload.description,
+            DESCRIPTION_MAX_CHARS,
+        )),
         lid: Set(Some(payload.lid)),
         create_datetime: Set(current_datetime),
         last_update_datetime: Set(current_datetime),
@@ -146,7 +150,10 @@ pub async fn add_resource_by_metadata(
     let current_datetime = Utc::now().naive_utc();
     let resource = resources::ActiveModel {
         name: Set(Some(metadata.name.clone())),
-        description: Set(Some(metadata.description.clone())),
+        description: Set(truncate_description(
+            Some(metadata.description.clone()),
+            DESCRIPTION_MAX_CHARS,
+        )),
         create_datetime: Set(current_datetime),
         last_update_datetime: Set(current_datetime),
         lid: Set(Some(lid)),
