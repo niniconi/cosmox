@@ -6,13 +6,13 @@ type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, SdkError>> + Send 
 use crate::types::{
     DeviceQueryRequest, DeviceSession, InitStatus, InitializeConfig, InstallPlugin,
     LibrariesRelatedTags, Library, LibraryAdd, LibraryDeleteRequest, LibraryModify, LibraryPath,
-    LibraryQueryRequest, LibraryType, Metadata, MetadataExtend, MetadataQueryKey, Permission,
-    PermissionAddRequest, PluginQueryItem, PluginQueryRequest, PushResponse, Resource,
+    LibraryQueryRequest, LibraryType, LogFileInfo, Metadata, MetadataExtend, MetadataQueryKey,
+    Permission, PermissionAddRequest, PluginQueryItem, PluginQueryRequest, PushResponse, Resource,
     ResourceAddRequest, ResourceModifyRequest, ResourceQueryRequest, Role, RoleAddRequest,
     RoleLinkPermissionAddRequest, ScannerInfo, ScannerStatus, ScannerTaskAddRequest, SearchRequest,
-    SystemInfo, Tag, TagAddRequest, TagCatalogEntry, TagGroup, TagGroupAddRequest,
-    TagGroupDeleteRequest, TagGroupQueryRequest, TagQueryRequest, User, UserLogin,
-    UserQueryRequest, UserResp, UserRoleAddRequest, UserSignUp,
+    SystemInfo, SystemLogRequest, SystemLogResponse, Tag, TagAddRequest, TagCatalogEntry, TagGroup,
+    TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest, TagQueryRequest, User,
+    UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest, UserSignUp,
 };
 
 pub use error::SdkError;
@@ -56,7 +56,8 @@ pub trait Api {
 
     fn system_info(&self) -> ApiFuture<'_, SystemInfo>;
     fn system_about(&self) -> ApiFuture<'_, String>;
-    fn system_log(&self) -> ApiFuture<'_, String>;
+    fn system_log(&self, params: SystemLogRequest) -> ApiFuture<'_, SystemLogResponse>;
+    fn system_log_files(&self) -> ApiFuture<'_, Vec<LogFileInfo>>;
     fn system_restart(&self) -> ApiFuture<'_, ()>;
     fn system_shutdown(&self) -> ApiFuture<'_, ()>;
     fn system_delete_all(&self) -> ApiFuture<'_, ()>;

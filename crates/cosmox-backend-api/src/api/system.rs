@@ -1,12 +1,12 @@
 use std::convert::Infallible;
 
-use cosmox_backend_data::services::system_service::{self, SystemInfo};
+use cosmox_backend_data::services::system_service::{self, LogFileInfo, LogResponse, SystemInfo};
 
 use crate::{
     Context, api,
     message::{ApiError, FromService, Message},
 };
-pub use cosmox_backend_data::services::system_service::SystemError;
+pub use cosmox_backend_data::services::system_service::{LogQueryRequest, SystemError};
 
 pub async fn info(ctx: &mut Context<'_>) -> Result<Message<SystemInfo>, ApiError<SystemError>> {
     ctx.access_ctx.endpoint = api::Endpoint::GetSystemInfo;
@@ -34,9 +34,19 @@ pub async fn about(ctx: &mut Context<'_>) -> Result<Message<String>, ApiError<Sy
     Message::from_service(ctx, system_service::about()).await
 }
 
-pub async fn log(ctx: &mut Context<'_>) -> Result<Message<String>, ApiError<SystemError>> {
+pub async fn log(
+    ctx: &mut Context<'_>,
+    query: LogQueryRequest,
+) -> Result<Message<LogResponse>, ApiError<SystemError>> {
     ctx.access_ctx.endpoint = api::Endpoint::GetSystemLog;
-    Message::from_service(ctx, system_service::log()).await
+    Message::from_service(ctx, system_service::get_log(query)).await
+}
+
+pub async fn log_files(
+    ctx: &mut Context<'_>,
+) -> Result<Message<Vec<LogFileInfo>>, ApiError<SystemError>> {
+    ctx.access_ctx.endpoint = api::Endpoint::GetSystemLog;
+    Message::from_service(ctx, system_service::log_files()).await
 }
 
 pub async fn delete_all(ctx: &mut Context<'_>) -> Result<Message<()>, ApiError<SystemError>> {

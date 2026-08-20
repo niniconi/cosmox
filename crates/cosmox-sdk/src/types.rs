@@ -63,6 +63,42 @@ pub struct SystemInfo {
     pub is_first_boot: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum LogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SystemLogRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub level: Option<LogLevel>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keyword: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SystemLogResponse {
+    pub file: String,
+    pub total: usize,
+    pub logs: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LogFileInfo {
+    pub name: String,
+    pub date: String,
+    pub size: u64,
+}
+
 // -- User --
 
 #[derive(Debug, Deserialize)]

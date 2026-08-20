@@ -71,6 +71,7 @@ pub fn server(
                             .service(system_controller::shutdown)
                             .service(system_controller::about)
                             .service(system_controller::log)
+                            .service(system_controller::log_files)
                             .service(system_controller::delete_all),
                     )
                     .service(

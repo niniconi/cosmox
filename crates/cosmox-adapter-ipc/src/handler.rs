@@ -1,7 +1,7 @@
 //! IPC endpoint handlers — one async fn per endpoint.
 use cosmox_backend_api::{
     Context, Token,
-    api::{self, system},
+    api::{self, system, system::LogQueryRequest},
     message::MessagePayload,
 };
 use cosmox_backend_data::{ipc_views::*, services::search_service::SearchRequest};
@@ -71,7 +71,11 @@ pub(super) async fn handle_system_about(token: Option<String>) -> IpcResponse {
 
 pub(super) async fn handle_system_log(token: Option<String>) -> IpcResponse {
     let mut ctx = make_context(token);
-    handle_api!(system::log(&mut ctx), data, data)
+    handle_api!(
+        system::log(&mut ctx, LogQueryRequest::default()),
+        data,
+        data
+    )
 }
 
 pub(super) async fn handle_system_shutdown(token: Option<String>) -> IpcResponse {

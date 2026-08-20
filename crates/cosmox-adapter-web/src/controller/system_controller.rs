@@ -2,7 +2,7 @@ use crate::into_message;
 use actix_web::{Responder, get, post, web};
 use cosmox_backend_api::{
     Context,
-    api::system::{self, SystemError},
+    api::system::{self, LogQueryRequest, SystemError},
     message,
 };
 use cosmox_macros::actix_web_error;
@@ -14,6 +14,7 @@ actix_web_error! {
         AlreadyInState() => {code: 409},
         OperationFailed() => {code: 500},
         InvalidState() => {code: 400},
+        Validation() => {code: 400},
         ConfigurationError() => {code: 500},
         ShutdownInitiated => {code: 202}, // Specific for async operations that might not immediately fail
         InternalError() => {code: 500},
@@ -42,8 +43,16 @@ pub async fn about(ctx: web::ReqData<Context<'_>>) -> impl Responder {
 }
 
 #[get("/log")]
-pub async fn log(ctx: web::ReqData<Context<'_>>) -> impl Responder {
-    into_message!(system::log(&mut ctx.into_inner()).await)
+pub async fn log(
+    ctx: web::ReqData<Context<'_>>,
+    query: web::Query<LogQueryRequest>,
+) -> impl Responder {
+    into_message!(system::log(&mut ctx.into_inner(), query.into_inner()).await)
+}
+
+#[get("/log/files")]
+pub async fn log_files(ctx: web::ReqData<Context<'_>>) -> impl Responder {
+    into_message!(system::log_files(&mut ctx.into_inner()).await)
 }
 
 #[post("/all/delete")]

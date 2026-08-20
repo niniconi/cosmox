@@ -8,11 +8,12 @@ use crate::{
     types::{
         DeviceQueryRequest, DeviceSession, InitStatus, InitializeConfig, InstallPlugin,
         LibrariesRelatedTags, Library, LibraryAdd, LibraryDeleteRequest, LibraryModify,
-        LibraryPath, LibraryQueryRequest, LibraryType, Message, MessagePayload, Metadata,
-        MetadataExtend, MetadataQueryKey, Permission, PermissionAddRequest, PluginQueryItem,
-        PluginQueryRequest, PushResponse, Resource, ResourceAddRequest, ResourceModifyRequest,
-        ResourceQueryRequest, Role, RoleAddRequest, RoleLinkPermissionAddRequest, ScannerInfo,
-        ScannerStatus, ScannerTaskAddRequest, SearchRequest, SystemInfo, Tag, TagAddRequest,
+        LibraryPath, LibraryQueryRequest, LibraryType, LogFileInfo, Message, MessagePayload,
+        Metadata, MetadataExtend, MetadataQueryKey, Permission, PermissionAddRequest,
+        PluginQueryItem, PluginQueryRequest, PushResponse, Resource, ResourceAddRequest,
+        ResourceModifyRequest, ResourceQueryRequest, Role, RoleAddRequest,
+        RoleLinkPermissionAddRequest, ScannerInfo, ScannerStatus, ScannerTaskAddRequest,
+        SearchRequest, SystemInfo, SystemLogRequest, SystemLogResponse, Tag, TagAddRequest,
         TagCatalogEntry, TagGroup, TagGroupAddRequest, TagGroupDeleteRequest, TagGroupQueryRequest,
         TagQueryRequest, User, UserLogin, UserQueryRequest, UserResp, UserRoleAddRequest,
         UserSignUp,
@@ -57,6 +58,28 @@ impl HttpApi {
         path: &str,
     ) -> Result<T, SdkError> {
         let mut req = self.client.get(format!("{}{}", self.base_url, path));
+        if let Some(h) = self.auth_header() {
+            req = req.header(header::AUTHORIZATION, h);
+        }
+        let resp = req.send().await.map_err(classify_reqwest_error)?;
+        check_status(&resp)?;
+        self.refresh_token(&resp);
+        let msg: Message<T> = resp
+            .json()
+            .await
+            .map_err(|e| SdkError::SerdeError(e.to_string()))?;
+        Self::extract(msg)
+    }
+
+    async fn get_query<T: serde::de::DeserializeOwned + std::fmt::Debug, Q: serde::Serialize>(
+        &self,
+        path: &str,
+        query: &Q,
+    ) -> Result<T, SdkError> {
+        let mut req = self
+            .client
+            .get(format!("{}{}", self.base_url, path))
+            .query(query);
         if let Some(h) = self.auth_header() {
             req = req.header(header::AUTHORIZATION, h);
         }
@@ -291,8 +314,12 @@ impl Api for HttpApi {
         Box::pin(async move { self.get("/system/about").await })
     }
 
-    fn system_log(&self) -> ApiFuture<'_, String> {
-        Box::pin(async move { self.get("/system/log").await })
+    fn system_log(&self, params: SystemLogRequest) -> ApiFuture<'_, SystemLogResponse> {
+        Box::pin(async move { self.get_query("/system/log", &params).await })
+    }
+
+    fn system_log_files(&self) -> ApiFuture<'_, Vec<LogFileInfo>> {
+        Box::pin(async move { self.get("/system/log/files").await })
     }
 
     fn system_restart(&self) -> ApiFuture<'_, ()> {
