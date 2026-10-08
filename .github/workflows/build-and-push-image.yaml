@@ -45,11 +45,6 @@ jobs:
           tags: |
             type=raw,value=${{ inputs.image_tag }}
 
-      - name: Create static directory
-        shell: bash
-        run: |
-          mkdir -p static
-
       - name: Build and push docker image
         uses: docker/build-push-action@v7
         with:

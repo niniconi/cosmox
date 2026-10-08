@@ -3,11 +3,19 @@ target/
 
 # test
 /test/
-/static/
+
+# Built/shipped UI assets are not committed, but keep the empty dir
+# (a `.gitkeep` inside `static/` is tracked on purpose).
+/static/*
+!/static/.gitkeep
 
 # Backup file
 *.swp
 *.bak
 *~
 
-/.first_boot.lock
+# Runtime first-boot marker, created under `cosmox.state.path`.
+.first_boot.lock
+
+# Local deployment secrets
+.env
