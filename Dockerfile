@@ -1,17 +1,35 @@
+# syntax=docker/dockerfile:1
+
+# ---------------------------------------------------------------------------
+# Build stage
+#
+# NOTE: the build context, the file path (`./Dockerfile`) and the GHA cache
+# strategy used by `.github/workflows/build-and-push-image.yaml` must stay
+# unchanged, so that the release pipeline keeps working as-is.
+# ---------------------------------------------------------------------------
 FROM rust:slim-bookworm AS builder
 
-RUN apt-get update && apt-get install -y \
+# Core build dependencies required by the root package and its direct
+# dependencies. cosmox-lua and cosmox-ffmpeg are workspace members but not in
+# the default `cargo build --release` graph (only the root package + deps are
+# built), so the media/lua dev packages below are optional and only needed for
+# those other build targets / kept for future use.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
     pkg-config \
+    clang \
+    libclang-dev \
     ffmpeg \
     libavcodec-dev \
     libavformat-dev \
     libavutil-dev \
     libswscale-dev \
+    libswresample-dev \
     libavdevice-dev \
     libavfilter-dev \
+    libpostproc-dev \
     libssl-dev \
-    libclang-dev \
-    clang \
+    liblua5.4-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -64,12 +82,13 @@ RUN mkdir -p src \
     crates/cosmox-sdk/src \
     crates/cosmox-template/src \
     crates/migration/src \
-  && touch src/main.rs \
+   && echo 'fn main() {}' > src/main.rs \
+  && touch crates/migration/src/main.rs \
   && for dir in src crates/*/src; do \
        [ -f "$dir/lib.rs" ] || touch "$dir/lib.rs"; \
      done \
   && touch crates/cosmox-sdk/build.rs \
-  && cargo build --release 2>&1 || echo "--- Dep cache build completed (expected compile errors for dummy sources) ---"
+  && cargo build --release
 
 # -----------------------------------------------------------
 # Real build layer
@@ -85,28 +104,71 @@ RUN find . -path "./target" -prune -o \( -name "*.rs" -o -name "*.wit" -o -name 
 
 RUN cargo build --release
 
-# -----------------------------------------------------------
-# Runtime image
-# -----------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Runtime stage
+# ---------------------------------------------------------------------------
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y \
+# Install runtime dependencies.
+# The released binary does not link libav/ffmpeg/liblua (the ffmpeg/lua
+# workspace members are not in the default build graph); curl is needed for the
+# health check. The ffmpeg/lua libraries are kept as convenience/tooling deps
+# and so they are already present if those features are enabled later.
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     ffmpeg \
-    libavcodec-dev \
-    libavformat-dev \
-    libavutil-dev \
-    libswscale-dev \
-    libavdevice-dev \
-    libavfilter-dev \
+    libavcodec59 \
+    libavformat59 \
+    libavutil57 \
+    libswscale6 \
+    libswresample4 \
+    libavfilter8 \
+    libavdevice59 \
+    libpostproc56 \
+    liblua5.4-0 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Unprivileged runtime user owning every writable location.
+RUN groupadd --system --gid 10001 cosmox \
+  && useradd --system --uid 10001 --gid cosmox --home-dir /var/lib/cosmox-server --shell /usr/sbin/nologin cosmox \
+  && mkdir -p /app /etc/cosmox-server \
+    /var/lib/cosmox-server /var/log/cosmox-server /var/cache/cosmox-server \
+  && chown -R cosmox:cosmox /app /var/lib/cosmox-server /var/log/cosmox-server /var/cache/cosmox-server
 
 WORKDIR /app
 
-COPY --from=builder /app/target/release/cosmox /app/server
-COPY --from=builder /app/application.yaml /app/application.yaml
-COPY static /app/static
+COPY --from=builder --chown=cosmox:cosmox /app/target/release/cosmox /app/server
+COPY --from=builder --chown=cosmox:cosmox /app/application.yaml /etc/cosmox-server/application.yaml
+COPY --chown=cosmox:cosmox static /app/static
+# Runtime documentation: `system::about` reads `./README.md` and the docs
+# controller reads `./docs/openapi.yaml`, both relative to the working
+# directory. The entrypoint symlinks them from here into the data volume.
+COPY --chown=cosmox:cosmox README.md /app/README.md
+COPY --chown=cosmox:cosmox docs/openapi.yaml /app/docs/openapi.yaml
+
+# Keep a copy inside the image so the binary also works when run from /app
+# without mounting an external configuration (the /etc path is checked first,
+# so this copy is only needed if /etc is absent or overridden).
+RUN cp /etc/cosmox-server/application.yaml /app/application.yaml \
+  && chown cosmox:cosmox /app/application.yaml
+
+# `.first_boot.lock` now lives under `cosmox.state.path`, so the working
+# directory is set to the data volume to keep that state on the volume too.
+WORKDIR /var/lib/cosmox-server
+
+ENV RUST_LOG=info
+
+COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/cosmox-entrypoint
+
+USER cosmox
 
 EXPOSE 8080
 
-ENTRYPOINT [ "./server" ]
+# Liveness only: any HTTP response (including 401/404) means the server
+# process is up. This is NOT a readiness probe — use the `/api/system/info`
+# response body or a 200 check if you need a true readiness signal.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8080/api/system/info | grep -qE '^(2|3|4)' || exit 1
+
+ENTRYPOINT ["/usr/local/bin/cosmox-entrypoint"]
