@@ -384,7 +384,10 @@ pub async fn delete_all() -> Result<(), SystemError> {
         .inspect_err(|err| log::error!("Failed to reset database: {err}"))
         .map_err(|err| SystemError::OperationFailed("fresh", err.to_string()))?;
 
-    if let Err(err) = std::fs::remove_file(".first_boot.lock") {
+    let lock_path =
+        std::path::Path::new(&Configuration::get_global_configuration().cosmox.state.path)
+            .join(".first_boot.lock");
+    if let Err(err) = std::fs::remove_file(lock_path) {
         log::error!("Failed to remove .first_boot.lock: {err}");
     }
 

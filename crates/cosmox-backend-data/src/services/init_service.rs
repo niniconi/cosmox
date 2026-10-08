@@ -1,6 +1,7 @@
 use std::fs::File;
 
 use chrono::Utc;
+use cosmox_configuration::Configuration;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DbErr, sea_query::Query,
 };
@@ -57,7 +58,13 @@ pub async fn initialize(initialize_config: InitializeConfig) -> bool {
                 .to_owned();
             db.execute(&bind_roles).await?;
 
-            Ok(File::create(".first_boot.lock")
+            let lock_path =
+                std::path::Path::new(&Configuration::get_global_configuration().cosmox.state.path)
+                    .join(".first_boot.lock");
+            if let Some(parent) = lock_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            Ok(File::create(&lock_path)
                 .inspect_err(|err| log::error!("Create first_boot lock file error:{err}"))
                 .is_ok())
         };
