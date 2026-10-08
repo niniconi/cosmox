@@ -140,55 +140,62 @@ pub struct QbittorrentServerConfiguration {
 /// Whole-configuration fallback used when application.yaml is entirely
 /// missing. Missing individual fields inside an existing file are covered
 /// by the per-field `#[serde(default = ...)]` attributes instead.
+///
+/// The values mirror `application.yaml` so the two default sources never
+/// drift apart; keep them in sync when editing either one.
 impl Default for Configuration {
     fn default() -> Self {
         Self {
             server: ServerConfiguration {
-                host: "127.0.0.1".to_string(),
+                host: "0.0.0.0".to_string(),
                 port: 8080,
             },
             database: DatabaseConfiguration {
-                host: "127.0.0.1".to_string(),
+                host: "localhost".to_string(),
                 port: 3306,
                 user: "root".to_string(),
                 password: "123456".to_string(),
-                database: "cosmox".to_string(),
+                database: "media".to_string(),
                 option: None,
             },
             cosmox: CosmoxConfiguration {
                 name: "cosmox server".to_string(),
                 scanner: ScannerConfiguration {
-                    metadata_path: "metadata".to_string(),
+                    metadata_path: "test/metadata".to_string(),
                     max_threads: None,
                 },
                 library: LibraryConfiguration {
-                    path: "library".to_string(),
+                    path: "test/library".to_string(),
                 },
                 data: DataConfiguration {
-                    path: crate::default::default_data_path(),
+                    path: "test/data".to_string(),
                 },
                 plugin: PluginConfiguration {
-                    path: crate::default::default_plugin_path(),
+                    path: "test/plugin".to_string(),
                 },
                 cache: CacheConfiguration {
-                    path: crate::default::default_cache_path(),
+                    path: "test/cache".to_string(),
                 },
                 log: LogConfiguration {
-                    path: crate::default::default_log_path(),
+                    path: "test/log".to_string(),
                 },
                 state: StateConfiguration {
-                    path: crate::default::default_state_path(),
+                    path: "test/state".to_string(),
                 },
                 auth: AuthConfiguration {
                     token_expire_secs: crate::default::default_token_expire_secs(),
                     refresh_threshold_secs: crate::default::default_refresh_threshold_secs(),
                 },
                 proxy: ProxyConfiguration {
-                    http_proxy: None,
-                    https_proxy: None,
+                    http_proxy: Some("http://proxy.server:8889".to_string()),
+                    https_proxy: Some("http://proxy.server:8889".to_string()),
                     socks5_proxy: None,
                 },
-                qbittorrent: None,
+                qbittorrent: Some(QbittorrentServerConfiguration {
+                    server: "http://127.0.0.1:7070".to_string(),
+                    username: "admin".to_string(),
+                    password: "123456".to_string(),
+                }),
             },
             state: State::default(),
         }

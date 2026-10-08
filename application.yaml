@@ -1,8 +1,20 @@
+# Default configuration.
+#
+# Every value below can be overridden at runtime by an environment variable
+# using the `COSMX_` prefix and `__` as the nesting separator, e.g.
+# `COSMX_SERVER__PORT=9090` or `COSMX_DATABASE__HOST=mariadb`.
+# `docker-compose.yml` relies on that mechanism, so no rebuild is required to
+# change the database, the paths or the listening port.
+#
+# The paths below are meant for local development. Containers are expected to
+# override them with the `COSMX_*` environment variables described above.
 server:
-  host: "127.0.0.1"
+  # Bind on every interface, otherwise the server is unreachable from outside
+  # of its container / host.
+  host: "0.0.0.0"
   port: 8080
 database:
-  host: "192.168.1.246"
+  host: "localhost"
   port: 3306
   user: "root"
   password: "123456"
