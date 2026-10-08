@@ -1,0 +1,79 @@
+# Reference: https://docs.docker.com/compose/compose-file/
+#
+# Start with:  docker compose up -d
+# Override the image tag / credentials in a `.env` file next to this file
+# (copy `.env.example`).
+
+services:
+  cosmox:
+    # Builds locally by default. To run a released image instead, remove the
+    # `build:` block below and set COSMX_IMAGE in `.env` (e.g.
+    # `ghcr.io/<owner>/<repo>:<tag>`) so compose pulls instead of building.
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    image: ${COSMX_IMAGE:-cosmox:local}
+    restart: unless-stopped
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      RUST_LOG: ${COSMX_RUST_LOG:-info}
+      # Configuration overrides, `COSMX_` prefix + `__` nesting separator.
+      COSMX_SERVER__HOST: 0.0.0.0
+      COSMX_SERVER__PORT: 8080
+      COSMX_DATABASE__HOST: mariadb
+      COSMX_DATABASE__PORT: 3306
+      COSMX_DATABASE__USER: ${COSMX_DATABASE_USER:-cosmox}
+      COSMX_DATABASE__PASSWORD: ${COSMX_DATABASE_PASSWORD:-cosmox}
+      COSMX_DATABASE__DATABASE: ${COSMX_DATABASE_NAME:-cosmox}
+      COSMX_COSMOX__SCANNER__METADATA_PATH: /var/lib/cosmox-server/metadata
+      COSMX_COSMOX__LIBRARY__PATH: /var/lib/cosmox-server/library
+      COSMX_COSMOX__DATA__PATH: /var/lib/cosmox-server/data
+      COSMX_COSMOX__PLUGIN__PATH: /var/lib/cosmox-server/plugin
+      COSMX_COSMOX__CACHE__PATH: /var/cache/cosmox-server
+      COSMX_COSMOX__LOG__PATH: /var/log/cosmox-server
+      COSMX_COSMOX__STATE__PATH: /var/lib/cosmox-server/state
+      # Optional overrides — uncomment and adjust:
+      # COSMX_COSMOX__AUTH__TOKEN_EXPIRE_SECS: 3600
+      # COSMX_COSMOX__AUTH__REFRESH_THRESHOLD_SECS: 900
+      # COSMX_COSMOX__PROXY__HTTP: http://proxy:8889
+      # COSMX_COSMOX__PROXY__HTTPS: http://proxy:8889
+      # COSMX_COSMOX__QBITTORRENT__SERVER: http://qbittorrent:8080
+      # COSMX_COSMOX__QBITTORRENT__USERNAME: admin
+      # COSMX_COSMOX__QBITTORRENT__PASSWORD: changeme
+    ports:
+      - "${COSMX_HTTP_PORT:-8080}:8080"
+    volumes:
+      - cosmox-data:/var/lib/cosmox-server
+      - cosmox-log:/var/log/cosmox-server
+      - cosmox-cache:/var/cache/cosmox-server
+      # Drop your own configuration here to replace the image default one.
+      # - ./application.yaml:/etc/cosmox-server/application.yaml:ro
+
+  mariadb:
+    image: ${COSMX_MARIADB_IMAGE:-mariadb:12.3.2}
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
+    environment:
+      MARIADB_ROOT_PASSWORD: ${COSMX_MARIADB_ROOT_PASSWORD:-cosmox-root}
+      MARIADB_DATABASE: ${COSMX_DATABASE_NAME:-cosmox}
+      MARIADB_USER: ${COSMX_DATABASE_USER:-cosmox}
+      MARIADB_PASSWORD: ${COSMX_DATABASE_PASSWORD:-cosmox}
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test:
+        ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -u root -p$$MARIADB_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  cosmox-data:
+  cosmox-log:
+  cosmox-cache:
+  mariadb-data:
