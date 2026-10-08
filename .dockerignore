@@ -1,12 +1,10 @@
 # Ignore everything by default
 *
 
-# Git metadata (for workspace Cargo.toml git dependency)
-!.git
-
 # Root source and config files
 !src/
 !static/
+!static/**
 !Cargo.lock
 !Cargo.toml
 !application.yaml
@@ -14,6 +12,13 @@
 !rustfmt.toml
 !rust-toolchain.toml
 !.cargo
+!docker/
+!docker/**
+
+# Documentation shipped into the image and served at runtime
+!README.md
+!docs/
+!docs/**
 
 # Crates directory (all subdirectories and Cargo.toml files needed for Docker build)
 !crates/
