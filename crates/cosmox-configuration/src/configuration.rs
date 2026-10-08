@@ -31,17 +31,17 @@ pub struct DatabaseConfiguration {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct DatabaseOptions {
-    #[serde(rename = "max-connections")]
+    #[serde(rename = "max-connections", alias = "max_connections")]
     pub max_connections: u32,
-    #[serde(rename = "min-connections")]
+    #[serde(rename = "min-connections", alias = "min_connections")]
     pub min_connections: u32,
-    #[serde(rename = "connect-timeout")]
+    #[serde(rename = "connect-timeout", alias = "connect_timeout")]
     pub connect_timeout: u64,
-    #[serde(rename = "acquire-timeout")]
+    #[serde(rename = "acquire-timeout", alias = "acquire_timeout")]
     pub acquire_timeout: u64,
-    #[serde(rename = "idle-timeout")]
+    #[serde(rename = "idle-timeout", alias = "idle_timeout")]
     pub idle_timeout: u64,
-    #[serde(rename = "max-lifetime")]
+    #[serde(rename = "max-lifetime", alias = "max_lifetime")]
     pub max_lifetime: u64,
 }
 
@@ -68,10 +68,10 @@ pub struct CosmoxConfiguration {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ScannerConfiguration {
-    #[serde(rename = "metadata-path")]
+    #[serde(rename = "metadata-path", alias = "metadata_path")]
     pub metadata_path: String,
 
-    #[serde(rename = "max-threads")]
+    #[serde(rename = "max-threads", alias = "max_threads")]
     pub max_threads: Option<usize>,
 }
 
@@ -117,16 +117,27 @@ pub struct StateConfiguration {
 /// gets a fresh token back via the `X-New-Token` response header.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct AuthConfiguration {
-    #[serde(default = "crate::default::default_token_expire_secs")]
+    #[serde(
+        rename = "token-expire-secs",
+        alias = "token_expire_secs",
+        default = "crate::default::default_token_expire_secs"
+    )]
     pub token_expire_secs: u64,
-    #[serde(default = "crate::default::default_refresh_threshold_secs")]
+    #[serde(
+        rename = "refresh-threshold-secs",
+        alias = "refresh_threshold_secs",
+        default = "crate::default::default_refresh_threshold_secs"
+    )]
     pub refresh_threshold_secs: u64,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ProxyConfiguration {
+    #[serde(rename = "http", alias = "http_proxy")]
     pub http_proxy: Option<String>,
+    #[serde(rename = "https", alias = "https_proxy")]
     pub https_proxy: Option<String>,
+    #[serde(rename = "socks5-proxy", alias = "socks5_proxy")]
     pub socks5_proxy: Option<String>,
 }
 
