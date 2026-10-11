@@ -22,6 +22,10 @@ pub const ENVIRONMENT_VARIABLE_PREFIX: &str = "COSMX";
 /// Separator between two nesting levels of an environment variable name.
 pub const ENVIRONMENT_VARIABLE_SEPARATOR: &str = "__";
 
+/// Marker file created under `cosmox.state.path` while first-boot
+/// initialization is still pending. Its presence means "not initialized yet".
+pub const FIRST_BOOT_LOCK_FILE: &str = ".first_boot.lock";
+
 static GLOBAL_CONFIGURATION: LazyLock<Configuration> = LazyLock::new(|| {
     let file = {
         let default_conf_file_path = PathBuf::from(default_config_path()).join("application.yaml");
@@ -61,7 +65,7 @@ static GLOBAL_CONFIGURATION: LazyLock<Configuration> = LazyLock::new(|| {
 
     config.state.is_first_boot.store(
         !Path::new(&config.cosmox.state.path)
-            .join(".first_boot.lock")
+            .join(FIRST_BOOT_LOCK_FILE)
             .exists(),
         Ordering::Relaxed,
     );

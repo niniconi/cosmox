@@ -1,4 +1,4 @@
-use cosmox_configuration::Configuration;
+use cosmox_configuration::{Configuration, FIRST_BOOT_LOCK_FILE};
 use migration::MigratorTrait;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -386,9 +386,9 @@ pub async fn delete_all() -> Result<(), SystemError> {
 
     let lock_path =
         std::path::Path::new(&Configuration::get_global_configuration().cosmox.state.path)
-            .join(".first_boot.lock");
+            .join(FIRST_BOOT_LOCK_FILE);
     if let Err(err) = std::fs::remove_file(lock_path) {
-        log::error!("Failed to remove .first_boot.lock: {err}");
+        log::error!("Failed to remove {FIRST_BOOT_LOCK_FILE}: {err}");
     }
 
     Configuration::get_global_configuration()
