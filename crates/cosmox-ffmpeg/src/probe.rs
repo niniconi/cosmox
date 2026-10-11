@@ -65,7 +65,7 @@ fn save_rgb_to_file(path: &str, frame: &ffmpeg::frame::Video, _quality: u8) {
         let start = (y as usize) * stride;
         let end = start + (width as usize) * 3;
         let row = &data[start..end];
-        for (x, chunk) in row.chunks_exact(3).enumerate() {
+        for (x, chunk) in row.as_chunks::<3>().0.iter().enumerate() {
             let x = x as u32;
             img.put_pixel(x, y, image::Rgb([chunk[0], chunk[1], chunk[2]]));
         }
