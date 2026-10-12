@@ -25,4 +25,19 @@ if [ ! -e "${DATA_DIR}/docs" ]; then
     ln -s "${APP_DIR}/docs" "${DATA_DIR}/docs"
 fi
 
+# Seed the bundled plugins into the (writable) plugin directory. They are
+# shipped in the image at ${APP_DIR}/plugins, but the data volume may already
+# exist, in which case Docker does not copy the image contents into it. Copying
+# here keeps the bundled plugins available regardless of the volume state while
+# leaving any plugins the user added in place.
+PLUGIN_DIR="${COSMX_COSMOX__PLUGIN__PATH:-${DATA_DIR}/plugins}"
+case "${PLUGIN_DIR}" in
+    /*) ;;
+    *) PLUGIN_DIR="${DATA_DIR}/${PLUGIN_DIR}" ;;
+esac
+if [ -d "${APP_DIR}/plugins" ] && [ "${PLUGIN_DIR}" != "${APP_DIR}/plugins" ]; then
+    mkdir -p "${PLUGIN_DIR}"
+    cp -a "${APP_DIR}/plugins/." "${PLUGIN_DIR}/"
+fi
+
 exec "${APP_DIR}/server" "$@"

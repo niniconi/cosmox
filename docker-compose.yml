@@ -30,7 +30,7 @@ services:
       COSMX_COSMOX__SCANNER__METADATA_PATH: /var/lib/cosmox-server/metadata
       COSMX_COSMOX__LIBRARY__PATH: /var/lib/cosmox-server/library
       COSMX_COSMOX__DATA__PATH: /var/lib/cosmox-server/data
-      COSMX_COSMOX__PLUGIN__PATH: /var/lib/cosmox-server/plugin
+      COSMX_COSMOX__PLUGIN__PATH: /var/lib/cosmox-server/plugins
       COSMX_COSMOX__CACHE__PATH: /var/cache/cosmox-server
       COSMX_COSMOX__LOG__PATH: /var/log/cosmox-server
       COSMX_COSMOX__STATE__PATH: /var/lib/cosmox-server/state

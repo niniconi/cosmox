@@ -104,6 +104,94 @@ RUN find . -path "./target" -prune -o \( -name "*.rs" -o -name "*.wit" -o -name 
 
 RUN cargo build --release
 
+# The plugin packager CLI is needed by the `plugins` stage below to turn each
+# plugin source tree into the on-disk layout the server loads. Build it here so
+# its dependencies are cached together with the rest of the workspace.
+RUN cargo build --release -p cosmox-plugin-packager
+
+# ---------------------------------------------------------------------------
+# Frontend stage
+# Builds the Flutter web client and emits the static bundle that the server
+# serves at `/`.
+#
+# No ref is pinned yet on purpose: the repositories currently have no tagged
+# releases. The client's default branch (`master`) is an empty stub, so the
+# project is taken from its `dev` branch.
+#
+# The client is a Flutter + Rust project (flutter_rust_bridge over `cosmox-sdk`),
+# so a Rust toolchain is required next to Flutter for `flutter build web` to
+# work.
+# ---------------------------------------------------------------------------
+FROM ghcr.io/cirruslabs/flutter:stable AS frontend
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    ca-certificates \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+      | sh -s -- -y --profile minimal --default-toolchain stable \
+    && rustup target add wasm32-unknown-unknown
+
+WORKDIR /src
+
+RUN git clone --depth 1 --branch dev https://github.com/niniconi/cosmox-client-flutter.git .
+
+RUN flutter config --no-analytics || true
+
+RUN flutter pub get
+
+RUN flutter build web --release
+
+# ---------------------------------------------------------------------------
+# Plugin stage
+# Builds the bundled plugins (wasm32-wasip2) and packages each of them into
+# the layout expected by the plugin loader:
+#
+#     <name>/about.yaml
+#     <name>/wasm/<name>.wasm
+#     <name>/defines/   (optional)
+#
+# The result is copied into the runtime image at `/app/plugins`; the entrypoint
+# seeds it into `cosmox.plugin.path` at startup. No ref is pinned yet on purpose
+# (see the frontend stage).
+# ---------------------------------------------------------------------------
+FROM rust:slim-bookworm AS plugins
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN rustup target add wasm32-wasip2
+
+# Packager CLI reused from the builder stage.
+COPY --from=builder /app/target/release/cosmox-plugin-packager /usr/local/bin/cosmox-plugin-packager
+
+WORKDIR /plugins-src
+
+# Each repository is cloned, built with its own `.cargo/config.toml`
+# (which selects the wasm32-wasip2 target), then packaged. `cargo build` must
+# run from inside the repository so that its `.cargo/config.toml` and
+# `rust-toolchain.toml` are picked up.
+RUN set -eux; \
+    for repo in cosmox-plugin-anime cosmox-plugin-bangumi; do \
+        git clone --depth 1 "https://github.com/niniconi/${repo}.git" "${repo}"; \
+        ( cd "${repo}" && cargo build --release ); \
+        cosmox-plugin-packager pack --input "${repo}" --release --output /plugins-out; \
+        mkdir -p "/plugins/${repo}"; \
+        cp -a "/plugins-out/release/${repo}/build/." "/plugins/${repo}/"; \
+    done
+
 # ---------------------------------------------------------------------------
 # Runtime stage
 # ---------------------------------------------------------------------------
@@ -140,12 +228,18 @@ WORKDIR /app
 
 COPY --from=builder --chown=cosmox:cosmox /app/target/release/cosmox /app/server
 COPY --from=builder --chown=cosmox:cosmox /app/application.yaml /etc/cosmox-server/application.yaml
-COPY --chown=cosmox:cosmox static /app/static
+# Pre-built web UI (Flutter client) emitted by the `frontend` stage.
+COPY --from=frontend --chown=cosmox:cosmox /src/build/web /app/static
 # Runtime documentation: `system::about` reads `./README.md` and the docs
 # controller reads `./docs/openapi.yaml`, both relative to the working
 # directory. The entrypoint symlinks them from here into the data volume.
 COPY --chown=cosmox:cosmox README.md /app/README.md
 COPY --chown=cosmox:cosmox docs/openapi.yaml /app/docs/openapi.yaml
+# Bundled plugins. They are kept outside the data volume (`/app/plugins`) so
+# they are never shadowed by a pre-existing/bind-mounted `cosmox-data` volume;
+# the entrypoint seeds them into the configured plugin directory
+# (`cosmox.plugin.path`) on every start.
+COPY --from=plugins --chown=cosmox:cosmox /plugins /app/plugins
 
 # Keep a copy inside the image so the binary also works when run from /app
 # without mounting an external configuration (the /etc path is checked first,
@@ -158,6 +252,13 @@ RUN cp /etc/cosmox-server/application.yaml /app/application.yaml \
 WORKDIR /var/lib/cosmox-server
 
 ENV RUST_LOG=info
+
+# The image ships the bundled plugins at /app/plugins; the entrypoint copies
+# them into this directory at startup. The packaged `application.yaml` ships
+# development paths (`test/plugin`), so pin the plugin directory here so the
+# bundled plugins are found in every deployment, including a plain `docker run`
+# without extra env overrides.
+ENV COSMOX_COSMOX__PLUGIN__PATH=/var/lib/cosmox-server/plugins
 
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/cosmox-entrypoint
 

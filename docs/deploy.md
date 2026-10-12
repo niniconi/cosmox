@@ -46,12 +46,21 @@ becomes `COSMX_COSMOX__SCANNER__METADATA_PATH`.
 | Path | Content | Volume |
 | --- | --- | --- |
 | `/app/server` | the cosmox binary | image |
-| `/app/static` | web UI assets (served from the working directory) | image |
+| `/app/static` | pre-built web UI (the Flutter client, served from the working directory) | image |
 | `/etc/cosmox-server/application.yaml` | configuration | image or bind mount |
-| `/var/lib/cosmox-server` | working directory: data, library, metadata, plugin, state | `cosmox-data` |
+| `/var/lib/cosmox-server` | working directory: data, library, metadata, plugins, state | `cosmox-data` |
+| `/var/lib/cosmox-server/plugins` | bundled plugins (`cosmox-plugin-anime`, `cosmox-plugin-bangumi`) | `cosmox-data` |
 | `/var/lib/cosmox-server/state` | state directory, including `.first_boot.lock` | `cosmox-data` |
 | `/var/log/cosmox-server` | rolling application logs | `cosmox-log` |
 | `/var/cache/cosmox-server` | scanner cache | `cosmox-cache` |
+
+The image is built with the Flutter web client and the two plugins above already
+bundled, so no extra setup is required. The plugins ship in the image at
+`/app/plugins` (outside the data volume) and the entrypoint copies them into the
+configured plugin directory on every start. This works even when the
+`cosmox-data` volume already exists, and it never removes plugins you added
+yourself. Upgrading the image therefore refreshes the bundled plugins
+automatically.
 
 The working directory is `/var/lib/cosmox-server` on purpose: `.first_boot.lock`
 is created under `cosmox.state.path` (the `state` directory inside the data
